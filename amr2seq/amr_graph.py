@@ -694,7 +694,74 @@ class AMR(defaultdict):
                 node_to_concepts[Node.node_id] = self.node_label
                 self.node_label = Node.node_id
 
-    '''       
+    '''
+
+    def is_named_entity(self, var):
+        edge_label_set = self[var].keys()
+        if 'name' in edge_label_set:
+            try:
+                assert 'wiki' in edge_label_set
+            except:
+                print 'ill-formed entity found'
+                print self.to_amr_string()
+                return False
+            return True
+        return False
+
+    def is_entity(self, var):
+        if var in self.node_to_concepts:
+            var_concept = self.node_to_concepts[var]
+            return var_concept.endswith('-entity') or var_concept.endswith('-quantity') or var_concept.endswith('-organization') or var_concept == 'amr-unknown'
+        return False
+
+    def is_predicate(self, var):
+        if var in self.node_to_concepts:
+            return re.match('.*-[0-9]+',self.node_to_concepts[var]) is not None
+        return False
+
+    def is_const(self, var):
+        return var not in self.node_to_concepts
+        
+    def statistics(self):
+        #sequence = self.dfs()[0]
+        named_entity_nums = defaultdict(int)
+        entity_nums = defaultdict(int)
+        predicate_nums = defaultdict(int)
+        variable_nums = defaultdict(int)
+        const_nums = defaultdict(int)
+        reentrancy_nums = 0
+
+        stack = [(self.roots[0],None,None,0)]
+        
+        while stack:
+            cur_var, rel, parent, depth = stack.pop()
+            exclude_rels = []
+            if (parent, rel, cur_var) in self.reentrance_triples: # reentrancy here
+                reentrancy_nums += 1
+                continue
+            if self.is_named_entity(cur_var):
+                entity_name = self.node_to_concepts[cur_var]
+                named_entity_nums[entity_name] += 1
+
+                exclude_rels = ['name','wiki']
+            elif self.is_entity(cur_var): # entity does not have name relation
+                entity_name = self.node_to_concepts[cur_var]
+                entity_nums[entity_name] += 1
+
+            elif self.is_predicate(cur_var):
+                pred_name = self.node_to_concepts[cur_var]
+                predicate_nums[pred_name] += 1
+
+            elif self.is_const(cur_var):
+                const_nums[cur_var] += 1
+            else:
+                variable_name = self.node_to_concepts[cur_var]
+                variable_nums[variable_name] += 1
+
+            for rel, var in self[cur_var].items():
+                if rel not in exclude_rels:
+                    stack.append((var[0], rel, cur_var, depth+1))
+        return named_entity_nums,entity_nums,predicate_nums,variable_nums,const_nums,reentrancy_nums
             
     def to_amr_string(self):
         

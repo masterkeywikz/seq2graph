@@ -10,7 +10,7 @@ amr graph representaion and parsing util
 from collections import defaultdict
 import re,string
 import numpy as np
-from constants import START_ID
+#from constants import START_ID
 
 # feature window placeholder
 
