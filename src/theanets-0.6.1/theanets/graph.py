@@ -161,7 +161,6 @@ class Network(object):
                 src_size = layer['src_size']
                 dst_size = layer['dst_size']
                 emb_size = layer['emb_size']
-                pdb.set_trace()
                 self.layers.append(layers.build('inputencdec', src_size = src_size,
                     dst_size = dst_size,
                     emb_size = emb_size,

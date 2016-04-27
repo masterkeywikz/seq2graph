@@ -35,7 +35,6 @@ class Input(base.Layer):
     def __init__(self, **kwargs):
         kwargs['inputs'] = 0
         kwargs['activation'] = 'linear'
-        pdb.set_trace()
         super(Input, self).__init__(**kwargs)
 
     def log(self):
@@ -93,9 +92,8 @@ class InputEncDec(base.Layer):
             A single integer specifying the size of this layer.
         '''
         return self.size
-    def transform(inputs):
+    def transform(self,inputs):
         ''' Do nothing, just pass the inputs.'''
-        assert(len(inputs)==2)
         src = inputs['src'] 
         dst = inputs['dst']
         src_mask = inputs['src_mask']
@@ -104,7 +102,7 @@ class InputEncDec(base.Layer):
         y_src = TT.dot(src, self.find('w_s')) + self.find('b_s')
         y_dst = TT.dot(dst, self.find('w_d')) + self.find('b_d')
 
-        return dict(src = y_src, dst = y_dst, src_mask = src_mask, dst_mask = dst_mask),[]
+        return dict(out = y_src, src = y_src, dst = y_dst, src_mask = src_mask, dst_mask = dst_mask),[]
 
 class Feedforward(base.Layer):
     '''A feedforward neural network layer performs a transform of its input.

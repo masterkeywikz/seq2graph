@@ -91,11 +91,11 @@ if __name__ == '__main__':
     def batch_train():
         random.shuffle(train_range)
 
-        src = np.zeros((src_train_np.shape[1], batch_size, len(src_w2ix)), dtype = 'int32')
-        src_mask = np.zeros((src_train_np.shape[1], batch_size, len(src_w2ix)), dtype = 'int32')
+        src = np.zeros((src_train_np.shape[1], batch_size, len(src_w2ix)), dtype = 'float32')
+        src_mask = np.zeros((src_train_np.shape[1], batch_size, len(src_w2ix)), dtype = 'float32')
 
-        dst = np.zeros((dst_train_np.shape[1], batch_size, len(dst_w2ix)), dtype = 'int32')
-        dst_mask = np.zeros((dst_train_np.shape[1], batch_size, len(dst_w2ix)), dtype = 'int32')
+        dst = np.zeros((dst_train_np.shape[1], batch_size, len(dst_w2ix)), dtype = 'float32')
+        dst_mask = np.zeros((dst_train_np.shape[1], batch_size, len(dst_w2ix)), dtype = 'float32')
 
         for i in range(batch_size):
             src_i = src_train_np[train_range[i],:]
@@ -138,6 +138,10 @@ if __name__ == '__main__':
 
     def layer_lstm(n):
         return dict(form = 'lstm', size = n)
+    def layer_lstm_enc(n):
+        return dict(form = 'lstmenc', size = n)
+    def layer_lstm_dec(n):
+        return dict(form = 'lstmdec', size = n)
 
     if not os.path.isdir(save_dir):
         os.makedirs(save_dir)
@@ -150,12 +154,11 @@ if __name__ == '__main__':
     if os.path.isfile(model_fn):
         e = theanets.Experiment(model_fn)
     else:
-        pdb.set_trace()
         e = theanets.Experiment(
             theanets.recurrent.Classifier,
             layers=(layer_input_encdec(len(src_w2ix), len(dst_w2ix), e_size),
-            #layers=(32,
-            layer_lstm(h_size),
+            layer_lstm_enc(h_size),
+            layer_lstm_dec(h_size),
             (len(dst_w2ix), 'softmax')),
             weighted=True,
             encdec = True

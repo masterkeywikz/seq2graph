@@ -39,6 +39,7 @@ from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
 from .. import activations
 from .. import util
+import pdb
 
 logging = climate.get_logger(__name__)
 
