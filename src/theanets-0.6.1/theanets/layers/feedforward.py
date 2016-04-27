@@ -97,12 +97,11 @@ class InputEncDec(base.Layer):
         src = inputs['src'] 
         dst = inputs['dst']
         src_mask = inputs['src_mask']
-        dst_mask = inputs['dst_mask']
         # Now map them.
         y_src = TT.dot(src, self.find('w_s')) + self.find('b_s')
         y_dst = TT.dot(dst, self.find('w_d')) + self.find('b_d')
 
-        return dict(out = y_src, src = y_src, dst = y_dst, src_mask = src_mask, dst_mask = dst_mask),[]
+        return dict(out = y_src, src = y_src, dst = y_dst, src_mask = src_mask),[]
 
 class Feedforward(base.Layer):
     '''A feedforward neural network layer performs a transform of its input.
@@ -151,7 +150,7 @@ class Feedforward(base.Layer):
         '''Set up the parameters and initial values for this layer.'''
         for name, size in self.inputs.items():
             label = 'w' if len(self.inputs) == 1 else 'w_{}'.format(name)
-            self.add_weights(label, size, self.size)
+            self.add_weights(label, size * 2, self.size)
         self.add_bias('b', self.size)
 
 

@@ -92,46 +92,67 @@ if __name__ == '__main__':
         random.shuffle(train_range)
 
         src = np.zeros((src_train_np.shape[1], batch_size, len(src_w2ix)), dtype = 'float32')
-        src_mask = np.zeros((src_train_np.shape[1], batch_size, len(src_w2ix)), dtype = 'float32')
+        src_mask = np.zeros((src_train_np.shape[1], batch_size), dtype = 'float32')
 
         dst = np.zeros((dst_train_np.shape[1], batch_size, len(dst_w2ix)), dtype = 'float32')
-        dst_mask = np.zeros((dst_train_np.shape[1], batch_size, len(dst_w2ix)), dtype = 'float32')
+        label = np.zeros((dst_train_np.shape[1], batch_size), dtype = 'int32')
+        mask = np.zeros((dst_train_np.shape[1], batch_size), dtype = 'float32')
+        #dst_mask = np.zeros((dst_train_np.shape[1], batch_size, len(dst_w2ix)), dtype = 'float32')
 
         for i in range(batch_size):
             src_i = src_train_np[train_range[i],:]
+            
             for j,pos in enumerate(src_i):
+                if pos < 0:
+                    break
                 src[j, i, pos] = 1
                 src_mask[j, i] = 1
 
         for i in range(batch_size):
             dst_i = dst_train_np[train_range[i],:]
+            
             for j,pos in enumerate(dst_i):
+                if pos < 0:
+                    break
                 dst[j, i, pos] = 1
-                dst_mask[j, i] = 1
-        return src, src_mask, dst, dst_mask
+                if j >= 1:
+                    # this is the prediction.
+                    label[j-1,i] = pos
+                    mask[j-1,i] = 1
+        return src, src_mask, dst, label, mask
 
     val_range = range(src_val_np.shape[0])
     def batch_val():
         random.shuffle(val_range)
 
-        src = np.zeros((src_val_np.shape[1], batch_size, len(src_w2ix)), dtype = 'int32')
-        src_mask = np.zeros((src_val_np.shape[1], batch_size, len(src_w2ix)), dtype = 'int32')
+        src = np.zeros((src_val_np.shape[1], batch_size, len(src_w2ix)), dtype = 'float32')
+        src_mask = np.zeros((src_val_np.shape[1], batch_size), dtype = 'float32')
 
-        dst = np.zeros((dst_val_np.shape[1], batch_size, len(dst_w2ix)), dtype = 'int32')
-        dst_mask = np.zeros((dst_val_np.shape[1], batch_size, len(dst_w2ix)), dtype = 'int32')
+        dst = np.zeros((dst_val_np.shape[1], batch_size, len(dst_w2ix)), dtype = 'float32')
 
+        label = np.zeros((dst_val_np.shape[1], batch_size), dtype = 'int32')
+        mask = np.zeros((dst_val_np.shape[1], batch_size), dtype = 'float32')
+ 
         for i in range(batch_size):
             src_i = src_val_np[val_range[i],:]
             for j,pos in enumerate(src_i):
+                if pos < 0:
+                    break
                 src[j, i, pos] = 1
                 src_mask[j, i] = 1
 
         for i in range(batch_size):
             dst_i = dst_val_np[val_range[i],:]
             for j,pos in enumerate(dst_i):
+                if pos < 0:
+                    break
                 dst[j, i, pos] = 1
-                dst_mask[j, i] = 1
-        return src, src_mask, dst, dst_mask
+                if j >= 1:
+                    # this is the prediction.
+                    label[j-1,i] = pos
+                    mask[j-1,i] = 1
+
+        return src, src_mask, dst, label, mask
 
     def layer_input_encdec(src_size, dst_size, emb_size):
         return dict(src_size = src_size, dst_size = dst_size, emb_size = emb_size)

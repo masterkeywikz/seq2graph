@@ -7,6 +7,7 @@ import numpy as np
 import re
 import sys
 import theano.tensor as TT
+import theano as T
 import pdb
 
 from . import feedforward
@@ -368,11 +369,12 @@ class Classifier(feedforward.Classifier):
 
         self.src = TT.ftensor3('src')
         self.src_mask = TT.matrix('src_mask')
-        self.dst = TT.ftensor3('src')
-        self.dst_mask = TT.matrix('dst_mask')
+        self.dst = TT.ftensor3('dst')
+        self.labels = TT.imatrix('labels')
+        self.weights = TT.matrix('weights')
 
         if self.weighted:
-            return [self.src, self.src_mask, self.dst, self.dst_mask]
+            return [self.src, self.src_mask, self.dst, self.labels, self.weights]
         return [self.src, self.dst]
 
     def error(self, outputs):
@@ -389,9 +391,10 @@ class Classifier(feedforward.Classifier):
             A theano expression representing the network error.
         '''
         output = outputs[self.output_name()]
-        pdb.set_trace()
         # flatten all but last components of the output and labels
         n = output.shape[0] * output.shape[1]
+        
+        #print output.shape.eval()
         correct = TT.reshape(self.labels, (n, ))
         weights = TT.reshape(self.weights, (n, ))
         prob = TT.reshape(output, (n, output.shape[2]))

@@ -560,16 +560,14 @@ class LSTMEnc(Recurrent):
             return [h_t, c_t]
 
         #x = self._only_input(inputs)
-        x = inputs['src']
-        src_mask = inputs['src_mask']
-        dst_mask = inputs['dst_mask']
+        x = inputs['in:src']
         
         batch_size = x.shape[1]
         (out, cell), updates = self._scan(
             fn,
             [TT.dot(x, self.find('xh')) + self.find('b')],
             [('h', batch_size), ('c', batch_size)])
-        return dict(out=out, cell=cell, dst = inputs['dst'], src_mask = src_mask, dst_mask = dst_mask), updates
+        return dict(out=out, cell=cell), updates
 
 class LSTMDec(Recurrent):
 
@@ -614,8 +612,8 @@ class LSTMDec(Recurrent):
             return z[:, 0*n:1*n], z[:, 1*n:2*n], z[:, 2*n:3*n], z[:, 3*n:4*n]
 
         def fn(x_t, h_tm1, c_tm1, hid_ref, mask_ref, V):
-            x_c = x_t
-            x_ct = TT.dot(x_c, self.find('xh')) + self.find('b')
+            x_c = x_t # batch_size * emb_size
+            x_ct = TT.dot(x_c, self.find('xh')) + self.find('b') # batch_size * h_size
              
             xi, xf, xc, xo = split(x_ct + TT.dot(h_tm1, self.find('hh')))
             i_t = TT.nnet.sigmoid(xi + c_tm1 * self.find('ci'))
@@ -626,11 +624,9 @@ class LSTMDec(Recurrent):
 
             hid_p = TT.dot(h_tm1, V) # batch_size * size.
             hid_p_dim = hid_p.dimshuffle(('x', 0, 1))
-            x_ts = TT.extra_ops.repeat(hid_p_dim, hid_ref.shape[0], axis = 0) # batch_size * mask_len * size
+            x_ts = TT.extra_ops.repeat(hid_p_dim, hid_ref.shape[0], axis = 0) # mask_len * batch_size * size
 
-            ref_act = TT.tanh(hid_ref)
-
-            emb = x_ts * ref_act # mask_len * batch_size * size.
+            emb = x_ts * hid_ref # mask_len * batch_size * size.
             beta = TT.sum(emb, axis=-1) # mask_len * batch_size.
             beta_b = TT.where( mask_ref > 0, beta, beta.min())
             z = TT.exp(beta_b - beta_b.max(axis=0, keepdims=True))
@@ -646,16 +642,16 @@ class LSTMDec(Recurrent):
             #    #alpha_sample = TT.cast(TT.eq(TT.arange(alpha.shape[0])[None,:], \
             #        TT.argmax(alpha,axis=0,keepdims=True)), theano.config.floatX)
             #    logging.info('LSTMAtt: stage is %s, using the argmax.', stage)
-            hid_ref_dim = hid_ref.dimshuffle((2,0,1))
+            hid_ref_dim = hid_ref.dimshuffle((2,0,1)) # emb_size * mask_len * batch_size
             #att = alpha * hid_ref_dim # now is size * max_len * batch_size
             att = alpha_sample * hid_ref_dim # now is size * max_len * batch_size
             att = att.sum(axis = 1) # size * batch_size
 
             return [h_t, c_t, alpha_sample, att.T]
 
-        hid_enc = inputs['out']
-        x = inputs['dst']
-        mask = inputs['src_mask']
+        hid_enc = inputs['out'] # max_len * batch_size * emb_size
+        x = inputs['in:dst']
+        mask = inputs['in:src_mask']
 
         batch_size = x.shape[1]
         (out, cell, alpha, att), updates = self._scan_(
@@ -663,9 +659,9 @@ class LSTMDec(Recurrent):
             x,
             [('h', batch_size), ('c', batch_size)],
             non_seq = [hid_enc, mask, self.find('V')] )
-        out_c = TT.concatenate((out, att), axis = -1)
+        out_c = TT.concatenate((out, att), axis = -1) # max_len * batch_size *  (2 * size)
         updates_items = updates.items()
-        return dict(out=out_c, cell=cell, alpha = alpha, dst_mask = inputs['dst_mask']), updates_items
+        return dict(out=out_c, cell=cell, alpha = alpha), updates_items
 
 class GRU(Recurrent):
     '''Gated Recurrent Unit layer.

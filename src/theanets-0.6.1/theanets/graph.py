@@ -325,8 +325,7 @@ class Network(object):
                     dropout[l.output_name()] = kwargs.get(which, 0)
             if self.encdec:
                 outputs, updates = dict(src=self.src, src_mask = self.src_mask,
-                        dst = self.dst,
-                        dst_mask = self.dst_mask), []
+                        dst = self.dst), []
             else:
                 outputs, updates = dict(x=self.x), []
             for i, layer in enumerate(self.layers):
