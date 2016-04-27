@@ -12,6 +12,7 @@ import climate
 import numpy as np
 import theano
 import theano.tensor as TT
+import pdb
 
 from . import base
 from .. import util
@@ -562,7 +563,7 @@ class LSTMEnc(Recurrent):
         x = inputs['src']
         src_mask = inputs['src_mask']
         dst_mask = inputs['dst_mask']
-
+        
         batch_size = x.shape[1]
         (out, cell), updates = self._scan(
             fn,
@@ -653,7 +654,7 @@ class LSTMDec(Recurrent):
             return [h_t, c_t, alpha_sample, att.T]
 
         hid_enc = inputs['out']
-        x = inputs['dts']
+        x = inputs['dst']
         mask = inputs['src_mask']
 
         batch_size = x.shape[1]
@@ -661,7 +662,7 @@ class LSTMDec(Recurrent):
             fn,
             x,
             [('h', batch_size), ('c', batch_size)],
-            non_seq = [ref, mask, self.find('V')] )
+            non_seq = [hid_enc, mask, self.find('V')] )
         out_c = TT.concatenate((out, att), axis = -1)
         updates_items = updates.items()
         return dict(out=out_c, cell=cell, alpha = alpha, dst_mask = inputs['dst_mask']), updates_items

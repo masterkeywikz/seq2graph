@@ -366,9 +366,9 @@ class Classifier(feedforward.Classifier):
 
         assert not sparse_input, 'Theanets does not support sparse recurrent models!'
 
-        self.src = TT.itensor3('src')
+        self.src = TT.ftensor3('src')
         self.src_mask = TT.matrix('src_mask')
-        self.dst = TT.itensor3('src')
+        self.dst = TT.ftensor3('src')
         self.dst_mask = TT.matrix('dst_mask')
 
         if self.weighted:
