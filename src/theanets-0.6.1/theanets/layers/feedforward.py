@@ -9,6 +9,7 @@ import numpy as np
 import theano
 import theano.sparse as SS
 import theano.tensor as TT
+import pdb
 
 from . import base
 from .. import util
@@ -34,6 +35,7 @@ class Input(base.Layer):
     def __init__(self, **kwargs):
         kwargs['inputs'] = 0
         kwargs['activation'] = 'linear'
+        pdb.set_trace()
         super(Input, self).__init__(**kwargs)
 
     def log(self):
@@ -61,10 +63,11 @@ class InputEncDec(base.Layer):
     def __init__(self, **kwargs):
         kwargs['inputs'] = 0
         kwargs['activation'] = 'linear'
-        if 'src_size' not in kwargs or 'dst_size' not in kwargs or
-            'emb_size' not in kwargs:
+        if 'src_size' not in kwargs or 'dst_size' not in kwargs \
+            or 'emb_size' not in kwargs:
             logging.info('v_size missing %s', self.__class__.__name__)
             raise NotImplementedError
+        kwargs['size'] = kwargs['emb_size']
         self.src_size = kwargs['src_size']
         self.dst_size = kwargs['dst_size']
         self.emb_size = kwargs['emb_size']
