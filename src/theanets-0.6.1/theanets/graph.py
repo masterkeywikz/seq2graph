@@ -57,6 +57,7 @@ import numpy as np
 import pickle
 import theano
 import theano.tensor as TT
+import pdb
 
 from . import layers
 
@@ -103,10 +104,11 @@ class Network(object):
         True iff this network expects target weight inputs during training.
     '''
 
-    def __init__(self, layers, weighted=False, sparse_input=False):
+    def __init__(self, layers, weighted=False, encdec = False,sparse_input=False):
         self._graphs = {}     # cache of symbolic computation graphs
         self._functions = {}  # cache of callable feedforward functions
         self.weighted = weighted
+        self.encdec = encdec
         self.inputs = list(self._setup_vars(sparse_input))
         self.layers = []
         for i, layer in enumerate(layers):
@@ -159,6 +161,7 @@ class Network(object):
                 src_size = layer['src_size']
                 dst_size = layer['dst_size']
                 emb_size = layer['emb_size']
+                pdb.set_trace()
                 self.layers.append(layers.build('inputencdec', src_size = src_size,
                     dst_size = dst_size,
                     emb_size = emb_size,
@@ -321,7 +324,12 @@ class Network(object):
                     if i == len(self.layers) - 1:
                         which = 'output_dropouts'
                     dropout[l.output_name()] = kwargs.get(which, 0)
-            outputs, updates = dict(x=self.x), []
+            if self.encdec:
+                outputs, updates = dict(src=self.src, src_mask = self.src_mask,
+                        dst = self.dst,
+                        dst_mask = self.dst_mask), []
+            else:
+                outputs, updates = dict(x=self.x), []
             for i, layer in enumerate(self.layers):
                 out, upd = layer.connect(outputs, noise, dropout)
                 outputs.update(out)

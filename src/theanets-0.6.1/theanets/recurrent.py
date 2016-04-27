@@ -7,6 +7,7 @@ import numpy as np
 import re
 import sys
 import theano.tensor as TT
+import pdb
 
 from . import feedforward
 
@@ -365,21 +366,14 @@ class Classifier(feedforward.Classifier):
 
         assert not sparse_input, 'Theanets does not support sparse recurrent models!'
 
-        # the first dimension indexes time, the second indexes the elements of
-        # each minibatch, and the third indexes the variables in a given frame.
-        self.x = TT.tensor3('x')
-
-        # for a classifier, this specifies the correct labels for a given input.
-        # the labels array for a recurrent network is (time_steps, batch_size).
-        self.labels = TT.imatrix('labels')
-
-        # the weights are the same shape as the output and specify the strength
-        # of each entry in the error computation.
-        self.weights = TT.matrix('weights')
+        self.src = TT.itensor3('src')
+        self.src_mask = TT.matrix('src_mask')
+        self.dst = TT.itensor3('src')
+        self.dst_mask = TT.matrix('dst_mask')
 
         if self.weighted:
-            return [self.x, self.labels, self.weights]
-        return [self.x, self.labels]
+            return [self.src, self.src_mask, self.dst, self.dst_mask]
+        return [self.src, self.dst]
 
     def error(self, outputs):
         '''Build a theano expression for computing the network error.
@@ -395,6 +389,7 @@ class Classifier(feedforward.Classifier):
             A theano expression representing the network error.
         '''
         output = outputs[self.output_name()]
+        pdb.set_trace()
         # flatten all but last components of the output and labels
         n = output.shape[0] * output.shape[1]
         correct = TT.reshape(self.labels, (n, ))
