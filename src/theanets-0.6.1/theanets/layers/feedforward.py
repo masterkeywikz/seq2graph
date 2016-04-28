@@ -74,9 +74,9 @@ class InputEncDec(base.Layer):
     
     def setup(self):
         self.add_weights('w_s', self.src_size, self.emb_size)
-        self.add_bias('b_s', self.emb_size, mean = 2)
+        #self.add_bias('b_s', self.emb_size, mean = 2)
         self.add_weights('w_d', self.dst_size, self.emb_size)
-        self.add_bias('b_d', self.emb_size, mean = 2)
+        #self.add_bias('b_d', self.emb_size, mean = 2)
 
     def log(self):
         '''Log some information about this layer.'''
@@ -98,8 +98,8 @@ class InputEncDec(base.Layer):
         dst = inputs['dst']
         src_mask = inputs['src_mask']
         # Now map them.
-        y_src = TT.dot(src, self.find('w_s')) + self.find('b_s')
-        y_dst = TT.dot(dst, self.find('w_d')) + self.find('b_d')
+        y_src = TT.dot(src, self.find('w_s'))
+        y_dst = TT.dot(dst, self.find('w_d'))
 
         return dict(out = y_src, src = y_src, dst = y_dst, src_mask = src_mask),[]
 
