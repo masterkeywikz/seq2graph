@@ -31,7 +31,11 @@ def load_split(w2ix, split_fn):
     with open(split_fn, 'r') as fid:
         for aline in fid:
             toks = aline.strip().split()
-            max_seq_len = max(max_seq_len, len(toks))
+            seq_len = 0
+            for tok in toks:
+                if tok in w2ix:
+                    seq_len += 1
+            max_seq_len = max(max_seq_len, seq_len)
             line_num +=1
 
     np_split = np.zeros((line_num, max_seq_len), dtype = 'int32')
@@ -119,6 +123,8 @@ if __name__ == '__main__':
                     # this is the prediction.
                     label[j-1,i] = pos
                     mask[j-1,i] = 1
+        if mask.sum() == 0:
+            logging.error('Should not happen')
         return src, src_mask, dst, label, mask
 
     val_range = range(src_val_np.shape[0])
@@ -151,7 +157,8 @@ if __name__ == '__main__':
                     # this is the prediction.
                     label[j-1,i] = pos
                     mask[j-1,i] = 1
-
+        if mask.sum() == 0:
+            logging.error('Should not happen')
         return src, src_mask, dst, label, mask
 
     def layer_input_encdec(src_size, dst_size, emb_size):
@@ -188,12 +195,12 @@ if __name__ == '__main__':
             batch_train,
             batch_val,
             algorithm='rmsprop',
-            learning_rate=0.0001,
+            learning_rate=0.001,
             momentum=0.9,
             max_gradient_clip=10,
             input_noise=0.0,
-            train_batches=30,
-            valid_batches=3,
+            train_batches=1,
+            valid_batches=1,
             hidden_l1 = h_l1,
             hidden_l2 = h_l2,
             weight_l1 = l1,
