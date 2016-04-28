@@ -96,7 +96,7 @@ if __name__ == '__main__':
         random.shuffle(train_range)
 
         src = np.zeros((src_train_np.shape[1], batch_size, len(src_w2ix)), dtype = 'float32')
-        src_mask = np.zeros((src_train_np.shape[1], batch_size), dtype = 'float32')
+        src_mask = np.zeros((src_train_np.shape[1], batch_size), dtype = 'int32')
 
         dst = np.zeros((dst_train_np.shape[1], batch_size, len(dst_w2ix)), dtype = 'float32')
         label = np.zeros((dst_train_np.shape[1], batch_size), dtype = 'int32')
@@ -132,7 +132,7 @@ if __name__ == '__main__':
         random.shuffle(val_range)
 
         src = np.zeros((src_val_np.shape[1], batch_size, len(src_w2ix)), dtype = 'float32')
-        src_mask = np.zeros((src_val_np.shape[1], batch_size), dtype = 'float32')
+        src_mask = np.zeros((src_val_np.shape[1], batch_size), dtype = 'int32')
 
         dst = np.zeros((dst_val_np.shape[1], batch_size, len(dst_w2ix)), dtype = 'float32')
 
@@ -197,7 +197,8 @@ if __name__ == '__main__':
             algorithm='rmsprop',
             learning_rate=0.001,
             momentum=0.9,
-            max_gradient_clip=10,
+            max_gradient_elem=10,
+            min_gradient_elem=-10,
             input_noise=0.0,
             train_batches=1,
             valid_batches=1,
