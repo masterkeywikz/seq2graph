@@ -629,7 +629,9 @@ class LSTMDec(Recurrent):
             emb = x_ts * hid_ref # mask_len * batch_size * size.
             beta = TT.sum(emb, axis=-1) # mask_len * batch_size.
             beta_b = TT.where( mask_ref > 0, beta, beta.min())
-            z = TT.exp(beta_b - beta_b.max(axis=0, keepdims=True))
+            beat_b = beta_b - beta_b.max(axis=0, keepdims=True)
+            #beat_b = beta_b.clip(-50, 0)
+            z = TT.exp(beta_b)
             alpha = (z * mask_ref ) / ( z * mask_ref ).sum(axis=0, keepdims=True) # max_len *  batch_size.
             alpha_sample = alpha
             #if stage == 'train':
@@ -644,7 +646,7 @@ class LSTMDec(Recurrent):
             #    logging.info('LSTMAtt: stage is %s, using the argmax.', stage)
             hid_ref_dim = hid_ref.dimshuffle((2,0,1)) # emb_size * mask_len * batch_size
             #att = alpha * hid_ref_dim # now is size * max_len * batch_size
-            att = alpha_sample * hid_ref_dim # now is size * max_len * batch_size
+            att = hid_ref_dim * alpha_sample # now is size * max_len * batch_size
             att = att.sum(axis = 1) # size * batch_size
 
             return [h_t, c_t, alpha_sample, att.T]
