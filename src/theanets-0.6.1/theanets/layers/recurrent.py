@@ -562,14 +562,15 @@ class LSTMEnc(Recurrent):
             return [h_t, c_t]
 
         #x = self._only_input(inputs)
-        x = inputs['in:src']
+        x = inputs['in:out']
+        #x = theano.printing.Print('this is a very important value')(x)
         
         batch_size = x.shape[1]
         (out, cell), updates = self._scan(
             fn,
             [TT.dot(x, self.find('xh')) + self.find('b')],
             [('h', batch_size), ('c', batch_size)])
-        return dict(out=out, cell=cell), updates
+        return dict(out=out, cell=cell), updates.items()
 
 class LSTMEncPlain(Recurrent):
 
@@ -710,7 +711,7 @@ class LSTMDec(Recurrent):
             outputs_info=outputs,
             non_sequences = non_seq,
             go_backwards='back' in self.kwargs.get('direction', '').lower(),
-            truncate_gradient=self.kwargs.get('bptt_limit', -1),
+            truncate_gradient=self.kwargs.get('bptt_limit', -1)
         )
 
     def transform(self, inputs):
@@ -720,8 +721,7 @@ class LSTMDec(Recurrent):
             return z[:, 0*n:1*n], z[:, 1*n:2*n], z[:, 2*n:3*n], z[:, 3*n:4*n]
 
         def fn(x_t, h_tm1, c_tm1, hid_ref, mask_ref, V):
-            x_c = x_t # batch_size * emb_size
-            x_ct = TT.dot(x_c, self.find('xh')) + self.find('b') # batch_size * h_size
+            x_ct = TT.dot(x_t, self.find('xh')) + self.find('b') # batch_size * h_size
              
             xi, xf, xc, xo = split(x_ct + TT.dot(h_tm1, self.find('hh')))
             i_t = TT.nnet.sigmoid(xi + c_tm1 * self.find('ci'))
@@ -730,7 +730,8 @@ class LSTMDec(Recurrent):
             o_t = TT.nnet.sigmoid(xo + c_t * self.find('co'))
             h_t = o_t * TT.tanh(c_t)
 
-            hid_p = TT.dot(h_t, V) # batch_size * size.
+            #hid_p = TT.dot(h_t, V) # batch_size * size.
+            hid_p = TT.dot(h_tm1, V) # batch_size * size.
             hid_p_dim = hid_p.dimshuffle(('x', 0, 1))
             x_ts = TT.extra_ops.repeat(hid_p_dim, hid_ref.shape[0], axis = 0) # mask_len * batch_size * size
 
@@ -739,9 +740,9 @@ class LSTMDec(Recurrent):
             beta_b = TT.where( mask_ref > 0, beta, beta.min())
             beat_b = beta_b - beta_b.max(axis=0, keepdims=True)
             #beat_b = beta_b.clip(-50, 0)
-            z = TT.exp(beta_b)
-            alpha = (z * mask_ref ) / ( z * mask_ref ).sum(axis=0, keepdims=True) # max_len *  batch_size.
-            alpha_sample = alpha
+            z = TT.exp(beta_b * mask_ref) * mask_ref
+            #alpha = (z * mask_ref ) / ( z * mask_ref ).sum(axis=0, keepdims=True) # max_len *  batch_size.
+            alpha = z / TT.sum(z, axis = 0, keepdims = True)
             #if stage == 'train':
             #    alpha_sample = self.h_sampling_mask * self.rng.multinomial(pvals = alpha.T, dtype = 'float32') \
             #                   + (1. - self.h_sampling_mask) * alpha.T
@@ -754,12 +755,14 @@ class LSTMDec(Recurrent):
             #    logging.info('LSTMAtt: stage is %s, using the argmax.', stage)
             hid_ref_dim = hid_ref.dimshuffle((2,0,1)) # emb_size * mask_len * batch_size
             #att = alpha * hid_ref_dim # now is size * max_len * batch_size
-            att = hid_ref_dim * alpha_sample # now is size * max_len * batch_size
+            att = hid_ref_dim * alpha# now is size * max_len * batch_size
             att = att.sum(axis = 1) # size * batch_size
 
-            return [h_t, c_t, alpha_sample, att.T]
+            return [h_t, c_t, alpha, att.T]
 
-        hid_enc = inputs['out'] # max_len * batch_size * emb_size
+        hid_enc = inputs['hid1:out'] # max_len * batch_size * emb_size
+        #hid_enc = theano.printing.Print('this is a very important value')(hid_enc)
+        #hid_enc = theano.printing.Print('this is a very important value')(hid_enc)
         x = inputs['in:dst']
         mask = inputs['in:src_mask']
 
@@ -771,7 +774,10 @@ class LSTMDec(Recurrent):
             non_seq = [hid_enc, mask, self.find('V')] )
         out_c = TT.concatenate((out, att), axis = -1) # max_len * batch_size *  (2 * size)
         updates_items = updates.items()
-        return dict(out=out_c, cell=cell, alpha = alpha), updates_items
+        #alpha_printed = theano.printing.Print('this is a very important value')(alpha)
+        alpha_printed = alpha
+
+        return dict(out=out_c, cell=cell, alpha = alpha_printed), updates_items
 
 class GRU(Recurrent):
     '''Gated Recurrent Unit layer.

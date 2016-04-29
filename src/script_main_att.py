@@ -14,6 +14,7 @@ logging = climate.get_logger(__name__)
 
 climate.enable_default_logging()
 
+unk_token = 'unk'
 def load_vocab(vocab_fn):
     w2ix = {}
     ix2w = {}
@@ -23,6 +24,9 @@ def load_vocab(vocab_fn):
             w = aline.strip()
             w2ix[w] = idx
             ix2w[idx] = w
+    if unk_token not in w2ix:
+        w2ix[unk_token] = len(w2ix)
+        ix2w[len(ix2w)] = unk_token
     return w2ix, ix2w
 
 def load_split(w2ix, split_fn):
@@ -31,11 +35,7 @@ def load_split(w2ix, split_fn):
     with open(split_fn, 'r') as fid:
         for aline in fid:
             toks = aline.strip().split()
-            seq_len = 0
-            for tok in toks:
-                if tok in w2ix:
-                    seq_len += 1
-            max_seq_len = max(max_seq_len, seq_len)
+            max_seq_len = max(max_seq_len, len(toks))
             line_num +=1
 
     np_split = np.zeros((line_num, max_seq_len), dtype = 'int32')
@@ -44,11 +44,12 @@ def load_split(w2ix, split_fn):
     with open(split_fn,'r') as fid:
         for row, aline in enumerate(fid):
             toks = aline.strip().split()
-            col = 0
-            for tok in toks:
+            for col,tok in enumerate(toks):
                 if tok in w2ix:
                     np_split[row, col] = w2ix[tok]
-                    col += 1
+                else:
+                    np_split[row, col] = w2ix[unk_token]
+
     return np_split
             
 if __name__ == '__main__':
@@ -96,7 +97,8 @@ if __name__ == '__main__':
         random.shuffle(train_range)
 
         src = np.zeros((src_train_np.shape[1], batch_size, len(src_w2ix)), dtype = 'float32')
-        src_mask = np.zeros((src_train_np.shape[1], batch_size), dtype = 'int32')
+        #src_mask = np.zeros((src_train_np.shape[1], batch_size), dtype = 'int32')
+        src_mask = np.zeros((src_train_np.shape[1], batch_size), dtype = 'float32')
 
         dst = np.zeros((dst_train_np.shape[1], batch_size, len(dst_w2ix)), dtype = 'float32')
         label = np.zeros((dst_train_np.shape[1], batch_size), dtype = 'int32')
@@ -123,8 +125,8 @@ if __name__ == '__main__':
                     # this is the prediction.
                     label[j-1,i] = pos
                     mask[j-1,i] = 1
-        if mask.sum() == 0:
-            logging.error('Should not happen')
+        #print (src_mask.sum(axis = 0))
+        #print (mask.sum(axis = 0))
         return src, src_mask, dst, label, mask
 
     val_range = range(src_val_np.shape[0])
@@ -132,7 +134,8 @@ if __name__ == '__main__':
         random.shuffle(val_range)
 
         src = np.zeros((src_val_np.shape[1], batch_size, len(src_w2ix)), dtype = 'float32')
-        src_mask = np.zeros((src_val_np.shape[1], batch_size), dtype = 'int32')
+        #src_mask = np.zeros((src_val_np.shape[1], batch_size), dtype = 'int32')
+        src_mask = np.zeros((src_val_np.shape[1], batch_size), dtype = 'float32')
 
         dst = np.zeros((dst_val_np.shape[1], batch_size, len(dst_w2ix)), dtype = 'float32')
 
@@ -159,6 +162,8 @@ if __name__ == '__main__':
                     mask[j-1,i] = 1
         if mask.sum() == 0:
             logging.error('Should not happen')
+        #print (src_mask.sum(axis = 0))
+        #print (mask.sum(axis = 0))
         return src, src_mask, dst, label, mask
 
     def layer_input_encdec(src_size, dst_size, emb_size):
@@ -197,11 +202,10 @@ if __name__ == '__main__':
             algorithm='rmsprop',
             learning_rate=0.001,
             momentum=0.9,
-            max_gradient_elem=10,
-            min_gradient_elem=-10,
+            max_gradient_elem=1,
             input_noise=0.0,
-            train_batches=1,
-            valid_batches=1,
+            train_batches=30,
+            valid_batches=3,
             hidden_l1 = h_l1,
             hidden_l2 = h_l2,
             weight_l1 = l1,

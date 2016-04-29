@@ -368,7 +368,8 @@ class Classifier(feedforward.Classifier):
         assert not sparse_input, 'Theanets does not support sparse recurrent models!'
 
         self.src = TT.ftensor3('src')
-        self.src_mask = TT.imatrix('src_mask')
+        #self.src_mask = TT.imatrix('src_mask')
+        self.src_mask = TT.matrix('src_mask')
         self.dst = TT.ftensor3('dst')
         self.labels = TT.imatrix('labels')
         self.weights = TT.matrix('weights')
@@ -391,6 +392,10 @@ class Classifier(feedforward.Classifier):
             A theano expression representing the network error.
         '''
         output = outputs[self.output_name()]
+        alpha = outputs['hid2:alpha']
+        alpha_sum = alpha.sum(axis = 0) # max_dst_len * batch_size * max_src_len
+        alpha_l_inf = alpha_sum.max(axis = -1) # batch_size
+
         # flatten all but last components of the output and labels
         n = output.shape[0] * output.shape[1]
         
@@ -400,7 +405,7 @@ class Classifier(feedforward.Classifier):
         prob = TT.reshape(output, (n, output.shape[2]))
         nlp = -TT.log(TT.clip(prob[TT.arange(n), correct], 1e-8, 1))
         if self.weighted:
-            return (weights * nlp).sum() / weights.sum()
+            return (weights * nlp).sum() / weights.sum() +  alpha_l_inf.mean()
         return nlp.mean()
 
     def predict_sequence(self, seed, steps, streams=1, rng=None):
