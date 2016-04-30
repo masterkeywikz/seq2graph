@@ -104,18 +104,33 @@ if __name__ == '__main__':
         label = np.zeros((dst_train_np.shape[1], batch_size), dtype = 'int32')
         mask = np.zeros((dst_train_np.shape[1], batch_size), dtype = 'float32')
         #dst_mask = np.zeros((dst_train_np.shape[1], batch_size, len(dst_w2ix)), dtype = 'float32')
-
-        for i in range(batch_size):
+        #for i in range(batch_size):
+        i = 0
+        idx = 0
+        indices = []
+        while True:
             src_i = src_train_np[train_range[i],:]
+            i += 1
+
+            num_el = 0
+            pos_s = [ pos for pos in src_i if pos >= 0 ]
+            num_el = len(pos_s)
+
+            if num_el < 6:
+                continue
             
             for j,pos in enumerate(src_i):
                 if pos < 0:
                     break
-                src[j, i, pos] = 1
-                src_mask[j, i] = 1
+                src[j, idx, pos] = 1
+                src_mask[j, idx] = 1
+            indices.append(i)
+            idx += 1
+            if idx == batch_size:
+                break
 
         for i in range(batch_size):
-            dst_i = dst_train_np[train_range[i],:]
+            dst_i = dst_train_np[train_range[indices[i]],:]
             
             for j,pos in enumerate(dst_i):
                 if pos < 0:
@@ -125,8 +140,8 @@ if __name__ == '__main__':
                     # this is the prediction.
                     label[j-1,i] = pos
                     mask[j-1,i] = 1
-        #print (src_mask.sum(axis = 0))
-        #print (mask.sum(axis = 0))
+        print (src_mask.sum(axis = 0))
+        print (mask.sum(axis = 0))
         return src, src_mask, dst, label, mask
 
     val_range = range(src_val_np.shape[0])
@@ -142,16 +157,33 @@ if __name__ == '__main__':
         label = np.zeros((dst_val_np.shape[1], batch_size), dtype = 'int32')
         mask = np.zeros((dst_val_np.shape[1], batch_size), dtype = 'float32')
  
-        for i in range(batch_size):
+        #for i in range(batch_size):
+        i = 0
+        idx = 0
+        indices = []
+        while True:
             src_i = src_val_np[val_range[i],:]
+            i += 1
+
+            num_el = 0
+            pos_s = [ pos for pos in src_i if pos >= 0 ]
+            num_el = len(pos_s)
+
+            if num_el < 6:
+                continue
+ 
             for j,pos in enumerate(src_i):
                 if pos < 0:
                     break
-                src[j, i, pos] = 1
-                src_mask[j, i] = 1
+                src[j, idx, pos] = 1
+                src_mask[j, idx] = 1
+            indices.append(i)
+            idx += 1
+            if idx == batch_size:
+                break
 
         for i in range(batch_size):
-            dst_i = dst_val_np[val_range[i],:]
+            dst_i = dst_val_np[val_range[indices[i]],:]
             for j,pos in enumerate(dst_i):
                 if pos < 0:
                     break
@@ -162,8 +194,8 @@ if __name__ == '__main__':
                     mask[j-1,i] = 1
         if mask.sum() == 0:
             logging.error('Should not happen')
-        #print (src_mask.sum(axis = 0))
-        #print (mask.sum(axis = 0))
+        print (src_mask.sum(axis = 0))
+        print (mask.sum(axis = 0))
         return src, src_mask, dst, label, mask
 
     def layer_input_encdec(src_size, dst_size, emb_size):
@@ -200,12 +232,15 @@ if __name__ == '__main__':
             batch_train,
             batch_val,
             algorithm='rmsprop',
-            learning_rate=0.001,
+            patience=50,
+            min_improvement=0.2,
+            #algorithm='adam',
+            learning_rate=0.0001,
             momentum=0.9,
             max_gradient_elem=1,
             input_noise=0.0,
-            train_batches=30,
-            valid_batches=3,
+            train_batches=1,
+            valid_batches=1,
             hidden_l1 = h_l1,
             hidden_l2 = h_l2,
             weight_l1 = l1,
