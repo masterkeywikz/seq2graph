@@ -118,8 +118,7 @@ class AMRNode(object):
         return result
 
 class AMRGraph(object):
-    def __init__(self, line):
-        vars, var_values, rel_links = from_AMR_line(line)
+    def __init__(self, line=None):
 
         self.dict = {}
         label_to_node = {}
@@ -128,6 +127,11 @@ class AMRGraph(object):
         self.edges = []
         self.edge_dict = {}
 
+        if not line:
+            return
+
+        vars, var_values, rel_links = from_AMR_line(line)
+
         for i in range(len(vars)):
             curr_var = vars[i]
             self.dict[curr_var] = var_values[i] #maintain a dict for all the variable values
@@ -135,16 +139,13 @@ class AMRGraph(object):
             #Setting a constant edge for a node: the variable name
             if curr_var not in label_to_node.keys(): #Haven't created a node for the current variable yet
                 curr_node = AMRNode(self)
-                self.node_dict[curr_node] = len(self.nodes)
-                self.nodes.append(curr_node)
-                curr_node_index = self.node_dict[curr_node]
+                curr_node_index = self.add_node(curr_node)
 
                 if i == 0:
                     self.root = curr_node_index
+
                 const_edge = AMREdge(curr_var, self, curr_node_index)
-                self.edge_dict[const_edge] = len(self.edges)
-                self.edges.append(const_edge)
-                curr_edge_index = self.edge_dict[const_edge]
+                curr_edge_index = self.add_edge(const_edge)
 
                 curr_node.set_const_edge(curr_edge_index) #The const edge is set immediately after the initialization of a node
                 label_to_node[curr_var] = curr_node_index
@@ -163,10 +164,7 @@ class AMRGraph(object):
                         if is_coref:  #The node for this variable has already been generated
                             edge.set_coref(True)
 
-                        self.edge_dict[edge] = len(self.edges)
-                        self.edges.append(edge)
-                        curr_edge_index = self.edge_dict[edge]
-
+                        curr_edge_index = self.add_edge(edge)
                         curr_node.add_incoming(curr_edge_index)
 
                         tail_node = self.nodes[tail_node_index]
@@ -185,27 +183,127 @@ class AMRGraph(object):
                                 linked_val = linked_val.replace('/', '@@@@')
                                 print >> sys.stderr, linked_val
 
-                        self.node_dict[tail_node] = len(self.nodes)
-                        self.nodes.append(tail_node)
-                        tail_node_index = self.node_dict[tail_node]
+                        tail_node_index = self.add_node(tail_node)
 
-                        #if '/' in linked_val:
-                        #    linked_val = '///%s' % linked_val  #here is a special trick for identifying constant that has '/' in it
                         tail_const = AMREdge(linked_val, self, tail_node_index)
-
-                        self.edge_dict[tail_const] = len(self.edges)
-                        self.edges.append(tail_const)
-                        tail_edge_index = self.edge_dict[tail_const]
-
+                        tail_edge_index = self.add_edge(tail_const)
                         tail_node.set_const_edge(tail_edge_index)
+
                         edge = AMREdge(rel, self, curr_node_index, tail_node_index)
 
-                        self.edge_dict[edge] = len(self.edges)
-                        self.edges.append(edge)
-                        curr_edge_index = self.edge_dict[edge]
+                        curr_edge_index = self.add_edge(edge)
 
                         curr_node.add_incoming(curr_edge_index)
                         tail_node.add_parent_edge(curr_edge_index)
+
+    def add_node(self, node):
+        self.node_dict[node] = len(self.nodes)
+        self.nodes.append(node)
+        return self.node_dict[node]
+
+    def add_edge(self, edge):
+        self.edge_dict[edge] = len(self.edges)
+        self.edges.append(edge)
+        return self.edge_dict[edge]
+
+    #Given an amr graph and the fragments to be collapsed,
+    #Return a new amr graph
+    @classmethod
+    def collapsed_graph(cls, amr_graph, root2fragment, root2entitynames):
+        new_graph = cls()
+
+        visited_nodes = set()
+
+        index_map = {}
+
+        collapsed_edges = bitarray(len(amr_graph.edges))
+        if collapsed_edges.count() != 0:
+            collapsed_edges ^= collapsed_edges
+        assert collapsed_edges.count() == 0
+
+        collapsed_nodes = bitarray(len(amr_graph.nodes))
+        if collapsed_nodes.count() != 0:
+            collapsed_nodes ^= collapsed_nodes
+        assert collapsed_nodes.count() == 0
+
+        stack = [(amr_graph.root, None)]
+
+        entity_id = 0
+        coref_edges = []
+        while stack:
+            curr_node_index, par_edge = stack.pop()
+            #print str(par_edge)
+            if collapsed_nodes[curr_node_index] == 1: #Disallow sharing of inside of named entity, delete for approximation
+                return None  #This will get rid of the three noisy AMRs in training
+
+            assert curr_node_index not in visited_nodes
+
+            #Build a new node for the current concept
+            new_node = AMRNode(new_graph)
+            new_node_index = new_graph.add_node(new_node)
+
+            index_map[curr_node_index] = new_node_index
+
+            if not par_edge: #Is root node
+                new_graph.root = new_node_index
+            else:
+                par_edge.tail = new_node_index
+                par_edge_index = new_graph.edge_dict[par_edge]
+                new_node.add_parent_edge(par_edge_index)
+
+            curr_node = amr_graph.nodes[curr_node_index]
+            curr_c_edge = amr_graph.edges[curr_node.c_edge]
+            new_node_label = str(curr_c_edge)
+
+            if new_node_label in amr_graph.dict: #Register all variables
+                new_graph.dict[new_node_label] = amr_graph.dict[new_node_label]
+
+            #The current concept is reduced
+            if curr_node_index in root2fragment:
+                new_node_label = 'E%d' % entity_id
+                entity_id += 1
+                new_graph.dict[new_node_label] = root2entitynames[curr_node_index]
+
+            const_edge = AMREdge(new_node_label, new_graph, new_node_index)
+            new_edge_index = new_graph.add_edge(const_edge)
+            new_node.set_const_edge(new_edge_index)
+
+            visited_nodes.add(curr_node_index)
+
+            if curr_node_index in root2fragment:  #Need to be collapsed
+                collapsed_edges |= root2fragment[curr_node_index].edges #Collapse all the entity edges
+                collapsed_nodes |= root2fragment[curr_node_index].nodes #These nodes should never be revisited
+                collapsed_nodes[curr_node_index] = 0
+
+            if len(curr_node.v_edges) > 0:
+                new_edges = []
+                for edge_index in curr_node.v_edges:  #depth first search
+                    if collapsed_edges[edge_index] == 1: #Been collapsed
+                        continue
+
+                    curr_edge = amr_graph.edges[edge_index]
+                    new_edge = AMREdge(curr_edge.label, new_graph, new_node_index)
+
+                    child_index = curr_edge.tail
+                    if not curr_edge.is_coref:
+                        #stack.append((child_index, new_edge))
+                        new_edges.append((child_index, new_edge))
+                    else:
+                        new_edge.set_coref(True)
+                        new_edge.tail = child_index
+                        coref_edges.append(new_edge)
+
+                    new_edge_index = new_graph.add_edge(new_edge)
+                    new_node.add_incoming(new_edge_index)
+                for (child_index, new_edge) in reversed(new_edges):
+                    stack.append((child_index, new_edge))
+
+        for co_edge in coref_edges:
+            old_index = co_edge.tail
+            assert old_index in index_map
+            co_edge.tail = index_map[old_index]
+
+        return new_graph
 
     def set_sentence(self, s):
         self.sent = s
@@ -923,6 +1021,7 @@ class AMRGraph(object):
 
         dep_rec = 0 #record the current depth
         for curr_node_index, is_coref, par_rel, depth in node_sequence:
+            #print curr_node_index, par_rel, is_coref
             curr_node = self.nodes[curr_node_index]
 
             curr_c_edge = self.edges[curr_node.c_edge]
@@ -963,6 +1062,7 @@ class AMRGraph(object):
         predicate_nums = defaultdict(int)
         variable_nums = defaultdict(int)
         const_nums = defaultdict(int)
+        relation_nums = defaultdict(int)
         reentrancy_nums = 0
 
         dep_rec = 0 #record the current depth
@@ -971,6 +1071,9 @@ class AMRGraph(object):
 
             curr_c_edge = self.edges[curr_node.c_edge]
             curr_node_label = str(curr_c_edge)
+
+            if par_rel:
+                relation_nums[par_rel] += 1
 
             if curr_node_index in root2fragment: #Collapse the fragment at current node
 
@@ -993,7 +1096,7 @@ class AMRGraph(object):
                     reentrancy_nums += 1
                 else:
                     const_nums[curr_node_label] += 1
-        return (entity_nums, predicate_nums, variable_nums, const_nums, reentrancy_nums)
+        return (relation_nums, entity_nums, predicate_nums, variable_nums, const_nums, reentrancy_nums)
 
     #Do a depth-first traversal of the graph, print the amr format
     #Collapsing some fragments into single node repr
