@@ -7,7 +7,7 @@ import numpy as np
 import re
 import sys
 import theano.tensor as TT
-import theano as T
+import theano
 import pdb
 
 from . import feedforward
@@ -378,6 +378,18 @@ class Classifier(feedforward.Classifier):
             return [self.src, self.src_mask, self.dst, self.labels, self.weights]
         return [self.src, self.dst]
 
+    def feed_forward(self, src, src_mask, dst, **kwargs):
+        key = self._hash(**kwargs)
+        if key not in self._functions:
+            outputs, updates = self.build_graph(**kwargs)
+            labels, exprs = list(outputs.keys()), list(outputs.values())
+            self._functions[key] = (
+                labels,
+                theano.function([self.src,self.src_mask, self.dst], exprs, updates=updates),
+        )
+        labels, f = self._functions[key]
+        return dict(zip(labels, f(src,src_mask, dst)))
+
     def error(self, outputs):
         '''Build a theano expression for computing the network error.
 
@@ -407,6 +419,79 @@ class Classifier(feedforward.Classifier):
         if self.weighted:
             return (weights * nlp).sum() / weights.sum() +  alpha_l_inf.mean()
         return nlp.mean()
+
+    def predict_captions_forward_batch(self, x_src, mask_src, beam_size = 20, **kwargs):
+        batch_size = x_src.shape[1]
+        y = []
+        # Important! 0 is the start token.
+        batch_of_beams = [ [(0.0, [0])] for i in range(batch_size)]
+        nsteps = 0
+        word_num = self.layers[-1].size
+
+        while True:
+            beam_c = [[] for i in range(batch_size) ]
+            idx_prevs = [ [] for i in range(batch_size)]
+            idx_of_idx = [[] for i in range(batch_size)]
+            idx_of_idx_len = [ ]
+
+            max_b = -1
+            cnt_ins = 0
+            for i in range(batch_size):
+                beams = batch_of_beams[i]
+                for k, b in enumerate(beams):
+                    idx_prev = b[-1]
+                    if idx_prev[-1] == 1:
+                        beam_c[i].append(b)
+                        continue
+
+                    idx_prevs[i].append( idx_prev)
+                    idx_of_idx[i].append(k) # keep the idx for future track.
+                    idx_of_idx_len.append(len(idx_prev))
+                    cnt_ins += 1
+                    if len(idx_prev) > max_b:
+                        max_b = len(idx_prev)
+            if cnt_ins == 0:
+                # we do not need the 20 steps, now we have find a total of $beam_size$ candidates. just break.
+                break
+            x_i = np.zeros((max_b, cnt_ins, word_num), dtype='float32')
+            x_src_i = np.zeros((x_src.shape[0], cnt_ins, x_src.shape[2]), dtype='float32')
+            mask_src_i = np.zeros((mask_src.shape[0], cnt_ins), dtype='float32')
+            idx_base = 0
+            for j,idx_prev_j in enumerate(idx_prevs):
+                for m, idx_prev in enumerate(idx_prev_j):
+                    for k in range(len(idx_prev)):
+                        x_i[k, m + idx_base, idx_prev[k]] = 1.0
+                # This may be potentially error? When one batch or one image is empty (have already generated 20 sentences.
+                #v_i[idx_base:idx_base + len(idx_prev_j),:] = img_fea[j,:]
+                x_src_i[:,idx_base:idx_base+len(idx_prev_j),:] = x_src[:,j:j+1,:] # just make np happy
+                mask_src_i[:,idx_base:idx_base+len(idx_prev_j)] = mask_src[:,j:j+1] # just make np happy
+                idx_base += len(idx_prev_j)
+
+            network_pred = self.feed_forward(x_src_i, mask_src_i, x_i, **kwargs)
+            p = np.zeros((network_pred['out'].shape[1], network_pred['out'].shape[2]))
+            for i in range(network_pred['out'].shape[1]):
+                p[i,:] = network_pred['out'][idx_of_idx_len[i]-1,i,:]
+            l = np.log( 1e-20 + p)
+            top_indices = np.argsort( -l, axis=-1)
+            idx_base = 0
+            for batch_i, idx_i in enumerate(idx_of_idx):
+                for j,idx in enumerate(idx_i):
+                    row_idx = idx_base + j
+                    for m in range(beam_size):
+                        wordix = top_indices[row_idx][m]
+                        beam_c[batch_i].append((batch_of_beams[batch_i][idx][0] + l[row_idx][wordix], batch_of_beams[batch_i][idx][1] + [wordix]))
+                idx_base += len(idx_i)
+            for i in range(len(beam_c)):
+                beam_c[i].sort(reverse = True) # descreasing order.
+            for i, b in enumerate(beam_c):
+                batch_of_beams[i] = beam_c[i][:beam_size]
+            nsteps += 1
+            if nsteps >= 20:
+                break
+        for beams in batch_of_beams:
+            pred = [(b[0], b[1]) for b in beams ]
+            y.append(pred)
+        return y 
 
     def predict_sequence(self, seed, steps, streams=1, rng=None):
         '''Draw a sequential sample of classes from this network.
