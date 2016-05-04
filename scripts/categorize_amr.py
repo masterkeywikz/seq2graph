@@ -10,29 +10,6 @@ import logger
 import argparse
 from re_utils import *
 from collections import defaultdict
-
-def initialize_edge_alignment(aligned_fragments, edge_alignment):
-    for frag in aligned_fragments:
-        edge_alignment |= frag.edges
-
-#This method output all the unaligned node information of the current AMR graph
-def output_all_unaligned_nodes(edge_alignment, amr_graph):
-    un_seq = []
-    un_nodes = []
-    for i in xrange(len(amr_graph.nodes)):
-        curr_node = amr_graph.nodes[i]
-        c_edge_index = curr_node.c_edge
-        if edge_alignment[c_edge_index] == 0: #Found a concept that is not aligned
-            un_seq.append(str(curr_node))
-            un_nodes.append(curr_node)
-    #print >> unalign_f, ' '.join(un_seq)
-    return un_nodes
-
-def output_all_unaligned_edges(edge_alignment, amr_graph):
-    for i in xrange(len(edge_alignment)):
-        if edge_alignment[i] == 0:
-            un_seq.append(str(amr_graph.edges[i]))
-
 def build_bimap(tok2frags):
     frag2map = defaultdict(set)
     index2frags = defaultdict(set)
@@ -144,8 +121,9 @@ class AMR_stats(object):
         self.num_nonpredicate_vals = defaultdict(int)
         self.num_consts = defaultdict(int)
         self.num_entities = defaultdict(int)
+        self.num_relations = defaultdict(int)
 
-    def update(self, local_re, local_pre, local_non, local_con, local_ent):
+    def update(self, local_re, local_pre, local_non, local_con, local_ent, local_rel):
         self.num_reentrancy += local_re
         for s in local_pre:
             self.num_predicates[s] += local_pre[s]
@@ -159,6 +137,9 @@ class AMR_stats(object):
         for s in local_ent:
             self.num_entities[s] += local_ent[s]
 
+        for s in local_rel:
+            self.num_relations[s] += local_rel[s]
+
     def dump2dir(self, dir):
         def dump_file(f, dict):
             sorted_dict = sorted(dict.items(), key=lambda k:(-k[1], k[0]))
@@ -170,11 +151,13 @@ class AMR_stats(object):
         non_pred_f = open(os.path.join(dir, 'non_pred_val'), 'w')
         const_f = open(os.path.join(dir, 'const'), 'w')
         entity_f = open(os.path.join(dir, 'entities'), 'w')
+        relation_f = open(os.path.join(dir, 'relations'), 'w')
 
         dump_file(pred_f, self.num_predicates)
         dump_file(non_pred_f, self.num_nonpredicate_vals)
         dump_file(const_f, self.num_consts)
         dump_file(entity_f, self.num_entities)
+        dump_file(relation_f, self.num_relations)
 
     def __str__(self):
         s = ''
@@ -185,11 +168,10 @@ class AMR_stats(object):
         s += 'Total number of entities: %d\n' % len(self.num_entities)
         return s
 
-
 def linearize_amr(args):
     logger.file = open(os.path.join(args.run_dir, 'logger'), 'w')
 
-    amr_file = os.path.join(args.data_dir, 'amr')
+    amr_file = os.path.join(args.data_dir, 'aligned_amr_nosharp')
     alignment_file = os.path.join(args.data_dir, 'alignment')
     sent_file = os.path.join(args.data_dir, 'sentence')
     tok_file = os.path.join(args.data_dir, 'token')
@@ -243,7 +225,7 @@ def linearize_amr(args):
 
         aligned_set = set()
 
-        all_frags = []
+        #all_frags = []
 
         #(opt_toks, role_toks, aligned_fragments) = extract_fragments(alignment_seq, amr_graph)
         ##logger.writeln(str(opt_toks))
@@ -260,15 +242,12 @@ def linearize_amr(args):
 
         (entity_frags, root2entityfrag, root2entitynames) = amr_graph.extract_all_entities()
 
-        logger.writeln(amr_graph.collapsed_form(root2entityfrag, root2entitynames))
-        (entity_nums, predicate_nums, variable_nums, const_nums, reentrancy_nums) = amr_graph.statistics(root2entityfrag, root2entitynames)
+        new_graph = AMRGraph.collapsed_graph(amr_graph, root2entityfrag, root2entitynames)
+        logger.writeln(str(new_graph))
+        #logger.writeln(amr_graph.collapsed_form(root2entityfrag, root2entitynames))
+        (relation_nums, entity_nums, predicate_nums, variable_nums, const_nums, reentrancy_nums) = amr_graph.statistics(root2entityfrag, root2entitynames)
 
-        amr_statistics.update(reentrancy_nums, predicate_nums, variable_nums, const_nums, entity_nums)
-        #logger.writeln(stats[0])
-        #logger.writeln(stats[1])
-        #logger.writeln(stats[2])
-        #logger.writeln(stats[3])
-        #logger.writeln(stats[4])
+        amr_statistics.update(reentrancy_nums, predicate_nums, variable_nums, const_nums, entity_nums, relation_nums)
 
         ####Extract entities#####
         #for (frag, frag_label) in amr_graph.extract_entities():
@@ -350,8 +329,8 @@ def linearize_amr(args):
         #aligned = [x for (x, y, z, k) in aligned]
 
         #all_frags += aligned
-    amr_statistics.dump2dir(args.run_dir)
-    print str(amr_statistics)
+    #amr_statistics.dump2dir(args.run_dir)
+    #print str(amr_statistics)
 
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser()
