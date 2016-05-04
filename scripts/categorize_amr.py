@@ -3,13 +3,13 @@ import sys
 import time
 import pickle
 import os
-import cPickle
 from amr_graph import *
 from amr_utils import *
 import logger
 import argparse
 from re_utils import *
 from collections import defaultdict
+from amr_stats import AMR_stats
 def build_bimap(tok2frags):
     frag2map = defaultdict(set)
     index2frags = defaultdict(set)
@@ -113,60 +113,6 @@ def unique_edge(frag):
             edge_list.append(i)
     assert len(edge_list) == frag.edges.count()
     return tuple(edge_list)
-
-class AMR_stats(object):
-    def __init__(self):
-        self.num_reentrancy = 0
-        self.num_predicates = defaultdict(int)
-        self.num_nonpredicate_vals = defaultdict(int)
-        self.num_consts = defaultdict(int)
-        self.num_entities = defaultdict(int)
-        self.num_relations = defaultdict(int)
-
-    def update(self, local_re, local_pre, local_non, local_con, local_ent, local_rel):
-        self.num_reentrancy += local_re
-        for s in local_pre:
-            self.num_predicates[s] += local_pre[s]
-
-        for s in local_non:
-            self.num_nonpredicate_vals[s] += local_non[s]
-
-        for s in local_con:
-            self.num_consts[s] += local_con[s]
-
-        for s in local_ent:
-            self.num_entities[s] += local_ent[s]
-
-        for s in local_rel:
-            self.num_relations[s] += local_rel[s]
-
-    def dump2dir(self, dir):
-        def dump_file(f, dict):
-            sorted_dict = sorted(dict.items(), key=lambda k:(-k[1], k[0]))
-            for (item, count) in sorted_dict:
-                print >>f, '%s %d' % (item, count)
-            f.close()
-
-        pred_f = open(os.path.join(dir, 'pred'), 'w')
-        non_pred_f = open(os.path.join(dir, 'non_pred_val'), 'w')
-        const_f = open(os.path.join(dir, 'const'), 'w')
-        entity_f = open(os.path.join(dir, 'entities'), 'w')
-        relation_f = open(os.path.join(dir, 'relations'), 'w')
-
-        dump_file(pred_f, self.num_predicates)
-        dump_file(non_pred_f, self.num_nonpredicate_vals)
-        dump_file(const_f, self.num_consts)
-        dump_file(entity_f, self.num_entities)
-        dump_file(relation_f, self.num_relations)
-
-    def __str__(self):
-        s = ''
-        s += 'Total number of reentrancies: %d\n' % self.num_reentrancy
-        s += 'Total number of predicates: %d\n' % len(self.num_predicates)
-        s += 'Total number of non predicates variables: %d\n' % len(self.num_nonpredicate_vals)
-        s += 'Total number of constants: %d\n' % len(self.num_consts)
-        s += 'Total number of entities: %d\n' % len(self.num_entities)
-        return s
 
 def linearize_amr(args):
     logger.file = open(os.path.join(args.run_dir, 'logger'), 'w')
