@@ -39,11 +39,11 @@ class Node():
         self.children = []
         self.seqID = seqID
         #Node.node_id += 1
-        #self.node_id = node_id        
-        
+        #self.node_id = node_id
+
     def __str__(self):
         return str((self.trace, self.node_label, self.depth, self.seqID))
-        
+
     def __repr__(self):
         return str((self.trace, self.node_label, self.depth, self.seqID))
 
@@ -51,7 +51,7 @@ class AMR(defaultdict):
     """
     An abstract meaning representation.
     Basic idea is based on bolinas' hypergraph for amr.
-    
+
     Here one AMR is a rooted, directed, acyclic graph.
     We also use the edge-label style in bolinas.
     """
@@ -70,8 +70,8 @@ class AMR(defaultdict):
     @classmethod
     def parse_string(cls,amr_string,RENAME_NODE=False):
         """
-        Parse a Pennman style string representation for amr and return an AMR 
-        
+        Parse a Pennman style string representation for amr and return an AMR
+
         >>>x = AMR.parse_string("(a / and :op1(恶化 :ARG0(它) :ARG1(模式 :mod(开发)) :time (已 经)) :op2(堵塞 :ARG0(它) :ARG1(交通 :mod(局部)) :location(a / around :op1(出口)))))")
         >>>
         .
@@ -82,7 +82,7 @@ class AMR(defaultdict):
             return re.compile(regexstr)
 
         def rename_node(parentnodelabel,parentconcept):
-            if not isinstance(parentnodelabel,(Quantity,Polarity,Interrogative,StrLiteral)):                                       
+            if not isinstance(parentnodelabel,(Quantity,Polarity,Interrogative,StrLiteral)):
                 # graph node rebuild
                 if parentconcept is not None:
                     amr.node_to_concepts[node_idx] = parentconcept
@@ -95,15 +95,15 @@ class AMR(defaultdict):
                         amr.node_to_concepts[node_idx] = parentnodelabel
                         parentnodelabel = node_idx
                         node_idx += 1
-                    else: #revisiting 
+                    else: #revisiting
                         parentnodelabel = mapping_table[parentnodelabel]
 
 
         PNODE = 1
-        CNODE = 2        
+        CNODE = 2
         EDGE = 3
         RCNODE = 4
-        
+
         amr = cls()
         stack = []
         state = 0
@@ -113,7 +113,7 @@ class AMR(defaultdict):
         lex_rules = [
             ("LPAR", '\('),
             ("RPAR",'\)'),
-            ("COMMA",','), 
+            ("COMMA",','),
             ("SLASH",'/'),
             ("EDGELABEL",":[^\s()]+"),
             ("STRLITERAL",u'"[^"]+"|\u201c[^\u201d]+\u201d'),
@@ -122,8 +122,8 @@ class AMR(defaultdict):
             ("QUANTITY","[0-9][0-9Ee^+\-\.,:]*(?=[\s\)])"),
             ("IDENTIFIER","[^\s()]+"), #no blank within characters
             ("POLARITY","\s(\-|\+)(?=[\s\)])")
-        ] 
-        
+        ]
+
         token_re = make_compiled_regex(lex_rules)
         #lexer = Lexer(lex_rules)
         #amr.reentrance_triples = []
@@ -131,7 +131,7 @@ class AMR(defaultdict):
         for match in token_re.finditer(amr_string):
             token = match.group()
             type = match.lastgroup
-            
+
             #if type == "STRLITERAL":
             #    import pdb
             #    pdb.set_trace()
@@ -164,11 +164,11 @@ class AMR(defaultdict):
                     forgetme, parentnodelabel, parentconcept = stack.pop()
                     assert forgetme == PNODE
                     assert parentconcept == None
-                    
+
                     if RENAME_NODE:
                         rename_node(parentnodelabel,parentconcept)
                     else:
-                        if not parentnodelabel in amr.node_to_concepts or parentconcept is not None: 
+                        if not parentnodelabel in amr.node_to_concepts or parentconcept is not None:
                             amr.node_to_concepts[parentnodelabel] = parentconcept
 
                     foo = amr[parentnodelabel]
@@ -179,7 +179,7 @@ class AMR(defaultdict):
                     else:
                         amr.roots.append(parentnodelabel)
                         state = 0
-                    
+
                 else: raise ParserError, "Unexpected token %s"%(token)
 
             elif state == 3:
@@ -189,7 +189,7 @@ class AMR(defaultdict):
                     stack.append((PNODE,nodelabel,token))
                     state = 4
                 else: raise ParserError, "Unexpected token %s"%(token)
-            
+
             elif state == 4:
                 if type == "EDGELABEL":
                     stack.append((EDGE,token[1:]))
@@ -201,7 +201,7 @@ class AMR(defaultdict):
                     #print state,parentnodelabel,parentconcept
                     if parentconcept is not None:
                         amr.node_to_concepts[parentnodelabel] = parentconcept
-                    
+
                     if stack:
                         stack.append((CNODE,parentnodelabel,parentconcept))
                         state = 6
@@ -211,7 +211,7 @@ class AMR(defaultdict):
                 else:
                     print amr_string
                     raise ParserError, "Unexpected token %s"%(token.encode('utf8'))
-                
+
             elif state == 5:
                 if type == "LPAR":
                     state = 1
@@ -231,31 +231,33 @@ class AMR(defaultdict):
                     stack.append((RCNODE,token,None))
                     state = 6
                 elif type == "EDGELABEL": #Unary edge
-                    stack.append((CNODE,None,None)) 
+                    stack.append((CNODE,None,None))
                     stack.append((EDGE,token[1:]))
                     state = 5
-                
+                    assert False
+
                 elif type == "RPAR":
                     stack.append((CNODE,None,None))
                     edges = []
-                    
+                    assert False
+
                     while stack[-1][0] != PNODE:
                         children = []
                         #one edge may have multiple children/tail nodes
                         while stack[-1][0] == CNODE:
                             forgetme, childnodelabel, childconcept = stack.pop()
                             children.append((childnodelabel,childconcept))
-                        
+
                         assert stack[-1][0] == EDGE
                         forgetme, edgelabel = stack.pop()
                         edges.append((edgelabel,children))
-                    
+
                     forgetme,parentnodelabel,parentconcept = stack.pop()
                     #print state,parentnodelabel,parentconcept
 
                     #check for annotation error
-                    if parentnodelabel in amr.node_to_concepts.keys(): 
-                        #concept has been defined by the children, 
+                    if parentnodelabel in amr.node_to_concepts.keys():
+                        #concept has been defined by the children,
                         #then they must have different concepts, otherwise the children's concepts should be None
                         #(coreference)
                         if amr.node_to_concepts[parentnodelabel] == parentconcept:
@@ -263,11 +265,11 @@ class AMR(defaultdict):
                         else:
                             sys.stderr.write("Wrong annotation format: Different concepts %s and %s have same node label(index)\n" % (amr.node_to_concepts[parentnodelabel],parentconcept))
                             parentnodelabel = parentnodelabel + "1"
-                            
+
                     if RENAME_NODE:
                         rename_node(parentnodelabel,parentconcept)
                     else:
-                        if not parentnodelabel in amr.node_to_concepts or parentconcept is not None: 
+                        if not parentnodelabel in amr.node_to_concepts or parentconcept is not None:
                             amr.node_to_concepts[parentnodelabel] = parentconcept
 
 
@@ -284,7 +286,7 @@ class AMR(defaultdict):
                             hypertarget.append(node)
                         hyperchild = tuple(hypertarget)
                         amr._add_triple(parentnodelabel,edgelabel,hyperchild)
-                    
+
                     if stack: #we have done with current level
                         state = 6
                         stack.append((CNODE, parentnodelabel, parentconcept))
@@ -294,7 +296,7 @@ class AMR(defaultdict):
 
             elif state == 6:
                 if type == "RPAR":
-                    
+
                     edges = []
                     reedges = []
                     while stack[-1][0] != PNODE:
@@ -306,18 +308,18 @@ class AMR(defaultdict):
                             if CTYPE == RCNODE:
                                 reentrances.append((childnodelabel,childconcept))
                             children.append((childnodelabel,childconcept))
-                        
+
                         assert stack[-1][0] == EDGE
                         forgetme, edgelabel = stack.pop()
                         edges.append((edgelabel,children))
                         reedges.append((edgelabel,reentrances))
-                    
+
                     forgetme,parentnodelabel,parentconcept = stack.pop()
                     #print "PNODE",state,parentnodelabel,parentconcept
-                    
+
                     #check for annotation error
-                    if parentnodelabel in amr.node_to_concepts.keys(): 
-                        #concept has been defined by the children, 
+                    if parentnodelabel in amr.node_to_concepts.keys():
+                        #concept has been defined by the children,
                         #then they must have different concepts, otherwise the children's concepts should be None
                         #(coreference)
                         if amr.node_to_concepts[parentnodelabel] == parentconcept:
@@ -325,11 +327,11 @@ class AMR(defaultdict):
                         else:
                             sys.stderr.write("Wrong annotation format: Different concepts %s and %s have same node label(index)\n" % (amr.node_to_concepts[parentnodelabel],parentconcept))
                             parentnodelabel = parentnodelabel + "1"
-                            
+
                     if RENAME_NODE:
                         rename_node(parentnodelabel,parentconcept)
                     else:
-                        if not parentnodelabel in amr.node_to_concepts or parentconcept is not None: 
+                        if not parentnodelabel in amr.node_to_concepts or parentconcept is not None:
                             amr.node_to_concepts[parentnodelabel] = parentconcept
 
                     for edgelabel,children in reversed(edges):
@@ -344,7 +346,7 @@ class AMR(defaultdict):
                             hypertarget.append(node)
                         hyperchild = tuple(hypertarget)
                         amr._add_triple(parentnodelabel,edgelabel,hyperchild)
-                    
+
                     for edgelabel,reentrance in reedges:
                         hreent = []
                         for node,concept in reentrance:
@@ -357,7 +359,7 @@ class AMR(defaultdict):
                     else: #we have done with this subgraph
                         state = 0
                         amr.roots.append(parentnodelabel)
-                elif type == "COMMA": # to seperate multiple children/tails 
+                elif type == "COMMA": # to seperate multiple children/tails
                     state = 7
                 elif type == "EDGELABEL":
                     stack.append((EDGE,token[1:]))
@@ -372,10 +374,10 @@ class AMR(defaultdict):
                     state = 1
                 else: raise ParserError, "Unexpected token %s"%(token)
 
-        if state != 0 and stack: 
+        if state != 0 and stack:
             raise ParserError, "mismatched parenthesis"
         return amr
-        
+
     def get_variable(self,posID):
         """return variable given postition ID"""
         reent_var = None
@@ -396,17 +398,17 @@ class AMR(defaultdict):
             return rel_concept_pairs
         subroot = subgraph.keys()[0] # sub root's concept
         concepts_on_the_path = []
-        
+
         for v in self.node_to_concepts:
             if v[0] == subroot[0] and self.node_to_concepts[v] == subroot:
                 concepts_on_the_path = [subroot]
                 rcp = is_match(self[v], subgraph[subroot])
-                if rcp is not None: return v, concepts_on_the_path+rcp                    
+                if rcp is not None: return v, concepts_on_the_path+rcp
                 #for rel, cpt in subgraph[subroot].items():
                 #    if rel in self[v] and cpt in self[v][rel]:
                 #        concepts_on_the_path.append(rel+'@'+cpt)
         return None, None
-    
+
     def get_pid(self,var):
         seq = self.dfs()[0]
         for node in seq:
@@ -419,7 +421,7 @@ class AMR(defaultdict):
         past_pos_id = []
         while posn_queue:
             posn = int(posn_queue.pop(0))
-            past_pos_id.append(posn)            
+            past_pos_id.append(posn)
             print var_list,past_pos_id,posn,visited_var
             variable = var_list[posn]
             var_list = []
@@ -433,11 +435,11 @@ class AMR(defaultdict):
                     var_list.append(k)
                 else:
                     if visited_var[k] == '.'.join(str(j) for j in past_pos_id+[i]):
-                        var_list.append(k)            
+                        var_list.append(k)
                     else:
                         vars.pop(i)
                         i -= 1
-                
+
                 i += 1
 
         '''
@@ -461,7 +463,7 @@ class AMR(defaultdict):
                     d_node = DNode(didx,dstr)
                     dpg.addNode(d_node)
                 dpg.addEdge(hidx,didx)
-        #root 
+        #root
         root = DNode(0,'ROOT')
         dpg.addNode(root)
         dpg.addEdge(0,alignment[self.roots[0]][0])
@@ -480,16 +482,16 @@ class AMR(defaultdict):
             self.reentrance_triples.append((parent,relation,reentrance[0]))
 
     def _add_triple(self, parent, relation, child, warn=None):
-        """                                                                                         
-        Add a (parent, relation, child) triple to the DAG.                                          
+        """
+        Add a (parent, relation, child) triple to the DAG.
         """
         if type(child) is not tuple:
             child = (child,)
         if parent in child:
-            #raise Exception('self edge!')                                                          
-            #sys.stderr.write("WARNING: Self-edge (%s, %s, %s).\n" % (parent, relation, child))     
+            #raise Exception('self edge!')
+            #sys.stderr.write("WARNING: Self-edge (%s, %s, %s).\n" % (parent, relation, child))
             if warn: warn.write("WARNING: Self-edge (%s, %s, %s).\n" % (parent, relation, child))
-            #raise ValueError, "Cannot add self-edge (%s, %s, %s)." % (parent, relation, child)     
+            #raise ValueError, "Cannot add self-edge (%s, %s, %s)." % (parent, relation, child)
         for c in child:
             x = self[c]
             for rel, test in self[c].items():
@@ -502,11 +504,11 @@ class AMR(defaultdict):
                        #print concept1,concept2
                        if concept1 != concept2:
                            warn.write("ANNOTATION ERROR: concepts %s and %s have same node label %s!" % (concept1, concepts2, parent))
-                       
-                    #raise ValueError,"(%s, %s, %s) would produce a cycle with (%s, %s, %s)" % (parent, relation, child, c, rel, test)                     
 
-        self[parent].append(relation, child)                
-        
+                    #raise ValueError,"(%s, %s, %s) would produce a cycle with (%s, %s, %s)" % (parent, relation, child, c, rel, test)
+
+        self[parent].append(relation, child)
+
     def set_alignment(self,alignment):
         self.align_to_sentence = alignment
 
@@ -530,7 +532,7 @@ class AMR(defaultdict):
                 for n in next:
                     firsthit = (parent,rel,n) not in self.reentrance_triples
                     leaf = False if self[n] else True
-                    
+
                     node = Node(rel,n,firsthit,leaf,depth,seqID)
                     #nid += 1
                     sequence.append(node)
@@ -564,9 +566,9 @@ class AMR(defaultdict):
         """
         depth first search for the graph
         return dfs ordered nodes and edges
-        TO-DO: this visiting order information can be obtained 
-        through the reading order of amr strings; modify the class 
-        to OrderedDefaultDict; 
+        TO-DO: this visiting order information can be obtained
+        through the reading order of amr strings; modify the class
+        to OrderedDefaultDict;
         """
         visited_nodes = set()
         visited_edges = []
@@ -575,7 +577,7 @@ class AMR(defaultdict):
         for i,r in enumerate(self.roots):
             seqID = str(i)
             stack = [((r,),None,None,0,seqID)] # record the node, incoming edge, parent, depth and unique identifier
-            
+
             #all_nodes = []
             while stack:
                 next,rel,parent,depth,seqID = stack.pop()
@@ -587,10 +589,10 @@ class AMR(defaultdict):
                     leaf = False if self[n] else True
 
                     node = Node(parent, rel, n, firsthit, leaf, depth, seqID)
-                    
+
                     #print self.node_to_concepts
                     sequence.append(node)
-                    
+
                     # same StrLiteral/Quantity/Polarity should not be revisited
                     if self.reentrance_triples: # for being the same with the amr string readed in
                         if n in visited_nodes or (parent,rel,n) in self.reentrance_triples:
@@ -609,25 +611,25 @@ class AMR(defaultdict):
                             if (n,rel,child[0]) not in self.reentrance_triples:
                                 stack.append((child,rel,n,depth+1,seqID+'.'+str(p)))
                                 p -= 1
-                            else:                                
+                            else:
                                 stack.append((child,rel,n,depth+1,None))
                         elif isinstance(child[0],(StrLiteral,Quantity)):
                             stack.append((child,rel,n,depth+1,seqID+'.'+str(p)))
                             p -= 1
                         else:
                             pass
-                            
+
 
             return (sequence, visited_edges)
-    
+
     def replace_node(self, h_idx, idx):
         """for coreference, replace all occurrence of node idx to h_idx"""
         visited_nodes = set()
         visited_edges = set()
-        
+
         for i,r in enumerate(self.roots[:]):
             stack = [((r,),None,None)] #node,incoming edge and preceding node
-            
+
             while stack:
                 next, rel, previous = stack.pop()
                 for n in next:
@@ -646,7 +648,7 @@ class AMR(defaultdict):
                             else:
                                 visited_edges.add((n,rel,child))
                                 stack.append((child,rel,n))
-    
+
     def find_rel(self,h_idx,idx):
         """find the relation between head_idx and idx"""
         rels = []
@@ -665,27 +667,27 @@ class AMR(defaultdict):
         if KEEP_OLD:
             foo = self[old_head]
             self[new_head].append('NA',(old_head,))
-    
+
     def replace_rel(self,h_idx,old_rel,new_rel):
         """replace the h_idx's old_rel to new_rel"""
         for v in self[h_idx].getall(old_rel):
             self[h_idx].append(new_rel,v)
         del self[h_idx][old_rel]
-    '''    
+    '''
     def rebuild_index(self, node, sent_index_mapping=None):
-        """assign non-literal node a new unique node label; replace the 
+        """assign non-literal node a new unique node label; replace the
            original index with the new node id or sentence offset;
-           if we have been provided the sentence index mapping, we use the 
+           if we have been provided the sentence index mapping, we use the
            sentence offsets as new node label instead of the serialized node id.
         """
         if sent_index_mapping is None:
             if node.node_label in self.node_to_concepts and self.node_to_concepts[node.node_label] is not None:
-                #update the node_to_concepts table 
+                #update the node_to_concepts table
                 self.node_to_concepts[Node.node_id] = self.node_to_concepts[node.node_label]
                 del self.node_to_concepts[node.node_label]
                 Node.mapping_table[node.node_label] = Node.node_id
-                node.node_label = Node.node_id 
-                
+                node.node_label = Node.node_id
+
             elif self.node_label not in node_to_concepts and self.node_label in Node.mapping_table:
                 new_label = Node.mapping_table[self.node_label]
                 self.node_label = new_label
@@ -721,7 +723,7 @@ class AMR(defaultdict):
 
     def is_const(self, var):
         return var not in self.node_to_concepts
-        
+
     def statistics(self):
         #sequence = self.dfs()[0]
         named_entity_nums = defaultdict(int)
@@ -732,7 +734,7 @@ class AMR(defaultdict):
         reentrancy_nums = 0
 
         stack = [(self.roots[0],None,None,0)]
-        
+
         while stack:
             cur_var, rel, parent, depth = stack.pop()
             exclude_rels = []
@@ -762,11 +764,11 @@ class AMR(defaultdict):
                 if rel not in exclude_rels:
                     stack.append((var[0], rel, cur_var, depth+1))
         return named_entity_nums,entity_nums,predicate_nums,variable_nums,const_nums,reentrancy_nums
-            
+
     def to_amr_string(self):
-        
+
         amr_string = ""
-        
+
         seq = self.dfs()[0]
 
         #always begin with root
@@ -784,14 +786,14 @@ class AMR(defaultdict):
                 else:
                     amr_string += "%s"%((dep_rec-node.depth)*')')
                     dep_rec = node.depth
-                    
-                    
+
+
                 if not node.leaf:
                     if node.firsthit and node.node_label in self.node_to_concepts:
                         amr_string += "\n%s:%s (%s / %s"%(node.depth*"\t",node.trace,node.node_label,self.node_to_concepts[node.node_label])
                     else:
                         amr_string += "\n%s:%s %s"%(node.depth*"\t",node.trace,node.node_label)
-                        
+
                 else:
                     if node.firsthit and node.node_label in self.node_to_concepts:
                         amr_string += "\n%s:%s (%s / %s)"%(node.depth*"\t",node.trace,node.node_label,self.node_to_concepts[node.node_label])
@@ -800,7 +802,7 @@ class AMR(defaultdict):
                             amr_string += '\n%s:%s "%s"'%(node.depth*"\t",node.trace,node.node_label)
                         else:
                             amr_string += "\n%s:%s %s"%(node.depth*"\t",node.trace,node.node_label)
-                            
+
         if dep_rec != 0:
             amr_string += "%s"%((dep_rec)*')')
         else:
@@ -816,7 +818,7 @@ if __name__ == "__main__":
 
     opt = OptionParser()
     opt.add_option("-v", action="store_true", dest="verbose")
-    
+
     (options, args) = opt.parse_args()
 
     s = '''(a / and :op1(恶化 :ARG0(它) :ARG1(模式 :mod(开发)) :time (已经)) :op2(t / 堵塞 :ARG0(它) :ARG1(交通 :mod(局部)) :location(a / around :op1(出口))))'''
@@ -824,7 +826,7 @@ if __name__ == "__main__":
     s = s.decode('utf8')
     #amr_ch = AMR.parse_string(s)
     amr_en = AMR.parse_string(s1)
-    
+
     #print str(amr_en)
     #print amr_en.dfs()
     print amr_en.to_amr_string()
