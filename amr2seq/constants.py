@@ -9,6 +9,7 @@ TOP='-TOP-' # top relation for the overall bracket
 LBR='('
 RBR=')'
 SURF='-SURF-' # surface form
+VERB='-VERB-'
 END='-END-'
 UNK='UNK' # unknown words
 

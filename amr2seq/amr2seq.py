@@ -4,10 +4,13 @@ categorize amr; generate linearized amr sequence
 import sys, os, re, codecs
 from amr_graph import AMR
 from collections import OrderedDict, defaultdict
-from constants import TOP,LBR,RBR,RET,SURF,END
+from constants import TOP,LBR,RBR,RET,SURF,END,VERB
 import gflags
 FLAGS=gflags.FLAGS
-
+gflags.DEFINE_string("version",'1.0','version for the sequence generated')
+gflags.DEFINE_integer("min_prd_freq",50,"threshold for filtering out predicates")
+gflags.DEFINE_integer("min_var_freq",50,"threshold for filtering out non predicate variables")
+gflags.DEFINE_string("seq_cat",'freq',"mode to output sequence category")
 class AMR_stats(object):
     def __init__(self):
         self.num_reentrancy = 0
@@ -71,15 +74,21 @@ class AMR_stats(object):
 
 
 class AMR_seq:
-    def __init__(self):
-        pass
+    def __init__(self, stats=None):
+        self.stats = stats
+        self.min_prd_freq = FLAGS.min_prd_freq
+        self.min_var_freq = FLAGS.min_var_freq
+        #pass
 
-    def linearize_amr(self, amr):
+    def linearize_amr(self, instance):
         '''
         given an amr graph, output a linearized and categorized amr sequence;
         TODO: use dfs prototype
         '''
         #pass
+
+        amr = instance[0]
+        
         r = amr.roots[0] # single root assumption
         old_depth = -1
         depth = -1
@@ -112,7 +121,7 @@ class AMR_seq:
                 continue
                 
             seq.append(rel+LBR)
-            exclude_rels, cur_symbol = self.get_symbol(cur_var, amr)
+            exclude_rels, cur_symbol = self.get_symbol(cur_var, instance, mode=FLAGS.seq_cat)
             seq.append(cur_symbol)
             aux_stack.append(RBR+rel)
 
@@ -125,7 +134,48 @@ class AMR_seq:
 
         return seq
 
-    def get_symbol(self, var, amr):
+    def _get_pred_symbol(self, var, instance, mode):
+        amr, alignment, sent, tok, pos = instance
+        if mode == 'basic':
+            pred_name = amr.node_to_concepts[var]
+            return pred_name
+        elif mode == 'freq':
+            pred_name = amr.node_to_concepts[var]
+            if self.stats.num_predicates[pred_name] >= self.min_prd_freq:
+                return pred_name
+            else:
+                sense = pred_name.split('-')[-1]
+                return VERB+sense
+        
+                # TODO further categorize the verb type using verbalization list
+        else:
+            raise Exception('Unexpected mode %s' % (mode))
+                
+    def _get_variable_symbal(self, var, instance, mode):
+        amr, alignment, sent, tok, pos = instance
+        if mode == 'basic':
+            variable_name = amr.node_to_concepts[var]
+            return variable_name
+        elif mode == 'freq':
+            variable_name = amr.node_to_concepts[var]
+            if self.stats.num_nonpredicate_vals[variable_name] >= self.min_var_freq:
+                return variable_name
+            else:
+                return SURF
+        
+                # TODO further categorize the variable type
+        else:
+            raise Exception('Unexpected mode %s' % (mode))
+            
+    def get_symbol(self, var, instance, mode='basic'):
+        '''
+        get symbol for each amr concept and variable
+        mode:
+            "basic": no frequence filtering
+            "freq": frequence filtering
+        '''
+        amr = instance[0]
+        
         if amr.is_named_entity(var):
             exclude_rels = ['wiki','name']
             entity_name = amr.node_to_concepts[var]
@@ -134,8 +184,7 @@ class AMR_seq:
             entity_name = amr.node_to_concepts[var]
             return [], 'ENT_'+entity_name
         elif amr.is_predicate(var):
-            pred_name = amr.node_to_concepts[var]
-            return [], pred_name
+            return [], self._get_pred_symbol(var, instance, mode=mode)
         elif amr.is_const(var):
             if var in ['interrogative', 'imperative', 'expressive', '-']:
                 return [], var
@@ -143,8 +192,9 @@ class AMR_seq:
                 return [], SURF
 
         else:
-            variable_name = amr.node_to_concepts[var]
-            return [], variable_name
+            #variable_name = amr.node_to_concepts[var]
+            #return [], variable_name
+            return [], self._get_variable_symbal(var, instance, mode=mode)
 
         return [],var
         
@@ -183,7 +233,8 @@ def readAMR(amrfile_path):
     return (comment_list,amr_list)
 
 if __name__ == "__main__":
-    gflags.DEFINE_string("data_dir",'../train',"data directory")
+    gflags.DEFINE_string("data_dir",'../dev',"data directory")
+    gflags.DEFINE_string("train_data_dir",'../train',"data directory")
     argv = FLAGS(sys.argv)
 
     amr_file = os.path.join(FLAGS.data_dir, 'amr')
@@ -204,23 +255,27 @@ if __name__ == "__main__":
     ##################
     # get statistics 
     ##################
-    # amr_stats = AMR_stats()
-    # amr_stats.collect_stats(amr_graphs)
-    # print amr_stats
+    train_amr_file = os.path.join(FLAGS.train_data_dir, "amr")
+    _ , train_amr_list = readAMR(train_amr_file)
+    train_amr_graphs = [AMR.parse_string(amr_string) for amr_string in train_amr_list]
+    amr_stats = AMR_stats()
+    amr_stats.collect_stats(train_amr_graphs)
+    print amr_stats
     # amr_stats.dump2dir(FLAGS.data_dir)
     
     # print toks[1]
     # print amr_graphs[1].to_amr_string()
     # amr_seq = AMR_seq()
     # print ' '.join(amr_seq.linearize_amr(amr_graphs[1]))
-    out_seq_file = os.path.join(FLAGS.data_dir, 'amrseq')
-    amr_seq = AMR_seq()
+    out_seq_file = os.path.join(FLAGS.data_dir, 'amrseq'+'.'+FLAGS.version)
+    amr_seq = AMR_seq(stats=amr_stats)
     with open(out_seq_file, 'w') as outf:
         print 'Linearizing ...'
         for i,g in enumerate(amr_graphs):
-            print 'No ' + str(i) + ':' + ' '.join(toks[i])
+            #print 'No ' + str(i) + ':' + ' '.join(toks[i])
             #print amr_graphs[i].to_amr_string()
-            seq = ' '.join(amr_seq.linearize_amr(g))
+            instance = (g,alignments[i],sents[i], toks[i], poss[i])
+            seq = ' '.join(amr_seq.linearize_amr(instance))
             #ourf.write(seq)
             print >> outf, seq
         
