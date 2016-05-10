@@ -741,8 +741,12 @@ class LSTMDec(Recurrent):
             beat_b = beta_b - beta_b.max(axis=0, keepdims=True)
             #beat_b = beta_b.clip(-50, 0)
             z = TT.exp(beta_b * mask_ref) * mask_ref
+            z_sum = TT.sum(z, axis = 0, keepdims = True)
+            #z = theano.printing.Print('this is a very important value')(z)
+            #z_sum = theano.printing.Print('this is a very important value')(z_sum)
             #alpha = (z * mask_ref ) / ( z * mask_ref ).sum(axis=0, keepdims=True) # max_len *  batch_size.
-            alpha = z / TT.sum(z, axis = 0, keepdims = True)
+            #alpha = z / TT.sum(z, axis = 0, keepdims = True)
+            alpha = z / z_sum
             #if stage == 'train':
             #    alpha_sample = self.h_sampling_mask * self.rng.multinomial(pvals = alpha.T, dtype = 'float32') \
             #                   + (1. - self.h_sampling_mask) * alpha.T
