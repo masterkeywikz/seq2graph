@@ -4,7 +4,7 @@ categorize amr; generate linearized amr sequence
 import sys, os, re, codecs
 from amr_graph import AMR
 from collections import OrderedDict, defaultdict
-from constants import TOP,LBR,RBR,RET,SURF,END,VERB
+from constants import TOP,LBR,RBR,RET,SURF,CONST,END,VERB
 import gflags
 FLAGS=gflags.FLAGS
 gflags.DEFINE_string("version",'1.0','version for the sequence generated')
@@ -189,7 +189,7 @@ class AMR_seq:
             if var in ['interrogative', 'imperative', 'expressive', '-']:
                 return [], var
             else:
-                return [], SURF
+                return [], CONST
 
         else:
             #variable_name = amr.node_to_concepts[var]
