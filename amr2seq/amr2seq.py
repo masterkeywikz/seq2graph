@@ -130,7 +130,7 @@ class AMR_seq:
                     stack.append((var[0],rel,cur_var,depth+1))
                     
         seq.extend(aux_stack[::-1])
-        seq.append(END)
+        #seq.append(END)
 
         return seq
 
