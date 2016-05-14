@@ -15,5 +15,5 @@ fi
 
 model_dir=./model_$size
 
-CUDA_VISIBLE_DEVICES=$gpuid python translate_amr.py --size 128 --train_dir $model_dir
+CUDA_VISIBLE_DEVICES=$gpuid python translate_amr.py --size 128 --train_dir $model_dir --use_lstm --output_keep_prob 0.5
 

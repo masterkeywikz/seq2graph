@@ -46,7 +46,7 @@ class Seq2SeqModel(object):
   def __init__(self, source_vocab_size, target_vocab_size, buckets, size,
                num_layers, max_gradient_norm, batch_size, learning_rate,
                learning_rate_decay_factor, use_lstm=False,
-               num_samples=512, forward_only=False):
+               num_samples=512, forward_only=False, output_keep_prob = 0):
     """Create the model.
 
     Args:
@@ -77,6 +77,7 @@ class Seq2SeqModel(object):
     self.learning_rate_decay_op = self.learning_rate.assign(
         self.learning_rate * learning_rate_decay_factor)
     self.global_step = tf.Variable(0, trainable=False)
+    self.output_keep_prob = output_keep_prob
 
     # If we use sampled softmax, we need an output projection.
     output_projection = None
@@ -99,7 +100,9 @@ class Seq2SeqModel(object):
     # Create the internal multi-layer cell for our RNN.
     single_cell = tf.nn.rnn_cell.GRUCell(size)
     if use_lstm:
+      print('Using LSTM cell, with dropout_ratio', self.output_keep_prob)
       single_cell = tf.nn.rnn_cell.BasicLSTMCell(size)
+      single_cell = tf.nn.rnn_cell.DropoutWrapper(single_cell, output_keep_prob=self.output_keep_prob)
     cell = single_cell
     if num_layers > 1:
       cell = tf.nn.rnn_cell.MultiRNNCell([single_cell] * num_layers)
@@ -156,7 +159,9 @@ class Seq2SeqModel(object):
     if not forward_only:
       self.gradient_norms = []
       self.updates = []
-      opt = tf.train.GradientDescentOptimizer(self.learning_rate)
+      #opt = tf.train.GradientDescentOptimizer(self.learning_rate)
+      #opt = tf.train.RMSPropOptimizer(self.learning_rate)
+      opt = tf.train.AdagradOptimizer(self.learning_rate)
       for b in xrange(len(buckets)):
         gradients = tf.gradients(self.losses[b], params)
         clipped_gradients, norm = tf.clip_by_global_norm(gradients,

@@ -9,5 +9,5 @@ gpuid=$1
 size=128
 model_dir=./model_$size
 
-CUDA_VISIBLE_DEVICES=$gpuid python translate_amr.py --decode --train_dir $model_dir --size $size
+CUDA_VISIBLE_DEVICES=$gpuid python translate_amr.py --decode --train_dir $model_dir --size $size --use_lstm
 

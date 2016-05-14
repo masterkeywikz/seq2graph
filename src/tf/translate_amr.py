@@ -42,7 +42,8 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 import data_utils_amr
-from tensorflow.models.rnn.translate import seq2seq_model
+#from tensorflow.models.rnn.translate import seq2seq_model
+import seq2seq_model
 
 
 tf.app.flags.DEFINE_float("learning_rate", 0.5, "Learning rate.")
@@ -50,6 +51,8 @@ tf.app.flags.DEFINE_float("learning_rate_decay_factor", 0.99,
                           "Learning rate decays by this much.")
 tf.app.flags.DEFINE_float("max_gradient_norm", 5.0,
                           "Clip gradients to this norm.")
+tf.app.flags.DEFINE_float("output_keep_prob", 0,
+                          "For dropout layer.")
 tf.app.flags.DEFINE_integer("batch_size", 32,
                             "Batch size to use during training.")
 tf.app.flags.DEFINE_integer("size", 256, "Size of each model layer.")
@@ -66,6 +69,8 @@ tf.app.flags.DEFINE_integer("steps_per_checkpoint", 2000,
                             "How many training steps to do per checkpoint.")
 tf.app.flags.DEFINE_boolean("decode", False,
                             "Set to True for interactive decoding.")
+tf.app.flags.DEFINE_boolean("use_lstm", False,
+                            "Set to True for LSTM cell")
 tf.app.flags.DEFINE_boolean("self_test", False,
                             "Run a self-test if this is set to True.")
 
@@ -73,8 +78,8 @@ FLAGS = tf.app.flags.FLAGS
 
 # We use a number of buckets and pad to the closest one for efficiency.
 # See seq2seq_model.Seq2SeqModel for details of how they work.
-_buckets = [(5, 10), (10, 15), (20, 25), (40, 50)]
-
+#_buckets = [(5, 10), (10, 15), (20, 25), (40, 50), (50, 70)]
+_buckets = [(50, 70)]
 
 def read_data(source_path, target_path, max_size=None):
   """Read data from source and target files and put into buckets.
@@ -120,7 +125,7 @@ def create_model(session, forward_only):
       FLAGS.src_vocab_size, FLAGS.dst_vocab_size, _buckets,
       FLAGS.size, FLAGS.num_layers, FLAGS.max_gradient_norm, FLAGS.batch_size,
       FLAGS.learning_rate, FLAGS.learning_rate_decay_factor,
-      forward_only=forward_only)
+      forward_only=forward_only, use_lstm = FLAGS.use_lstm, output_keep_prob = FLAGS.output_keep_prob)
   ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
   if ckpt and tf.gfile.Exists(ckpt.model_checkpoint_path):
     print("Reading model parameters from %s" % ckpt.model_checkpoint_path)
@@ -136,6 +141,9 @@ def train():
   print("Preparing amr data in %s" % FLAGS.data_dir)
   src_train, dst_train, src_dev, dst_dev, _, _ = data_utils_amr.prepare_amr_data(
       FLAGS.data_dir, FLAGS.src_vocab_size, FLAGS.dst_vocab_size, FLAGS.src_fn, FLAGS.dst_fn)
+
+  if not os.path.isdir(FLAGS.train_dir):
+    os.makedirs(FLAGS.train_dir)
 
   with tf.Session() as sess:
     # Create model.
