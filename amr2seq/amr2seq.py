@@ -2,10 +2,11 @@
 categorize amr; generate linearized amr sequence
 '''
 import sys, os, re, codecs
+import string
+import gflags
 from amr_graph import AMR
 from collections import OrderedDict, defaultdict
 from constants import TOP,LBR,RBR,RET,SURF,CONST,END,VERB
-import gflags
 from parser import ParserError
 FLAGS=gflags.FLAGS
 gflags.DEFINE_string("version",'1.0','version for the sequence generated')
@@ -267,7 +268,7 @@ class AMR_seq:
         def register_var(token):
             num = 0
             while True:
-                currval = '%s%d' % (token[0], num)
+                currval = ('%s%d' % (token[0], num)) if token[0] in string.letters else ('a%d' % num)
                 if currval in var_set:
                     num += 1
                 else:
@@ -345,7 +346,12 @@ class AMR_seq:
                     stack.append((PNODE,nodelabel,nodeconcept))
                     state = 2
                 elif type == "SURF":
-                    stack.append((PNODE,token.strip(),None))
+                    if currpos + 1 < seq_length and parsed_seq[currpos+1][1] == "LPAR":
+                        nodelabel = register_var(token)
+                        nodeconcept = token
+                        stack.append((PNODE,nodelabel,nodeconcept))
+                    else:
+                        stack.append((PNODE,token.strip(),None))
                     state = 2
                 elif type == "REENTRANCY":
                     if currpos + 1 < seq_length and parsed_seq[currpos+1][1] == "LPAR":
@@ -356,7 +362,12 @@ class AMR_seq:
                         stack.append((PNODE,token.strip(),None))
                     state = 2
                 elif type == "POLARITY":
-                    stack.append((PNODE,token.strip(),None))
+                    if currpos + 1 < seq_length and parsed_seq[currpos+1][1] == "LPAR":
+                        nodelabel = register_var(token)
+                        nodeconcept = token
+                        stack.append((PNODE,nodelabel,nodeconcept))
+                    else:
+                        stack.append((PNODE,token.strip(),None))
                     state = 2
                 else: raise ParserError , "Unexpected token %s"%(token.encode('utf8'))
 
@@ -528,7 +539,6 @@ if __name__ == "__main__":
     poss = [line.strip().split() for line in open(pos_file, 'r')]
 
     if FLAGS.amr2seq:
-        print 'okay'
         amr_graphs = [AMR.parse_string(amr_string) for amr_string in amr_list]
         alignments = [line.strip().split() for line in open(alignment_file, 'r')]
 
