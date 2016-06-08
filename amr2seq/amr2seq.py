@@ -290,13 +290,15 @@ class AMR_seq:
         lex_rules = [
             ("LPAR", '[^\s()]+\('),  #Start of an edge
             ("RPAR",'\)[^\s()]+'),  #End of an edge
-            ("SURF", '-SURF-'),  #Surface form constant
-            ("POLARITY", '-'),
+            #("SURF", '-SURF-'),  #Surface form non predicate
+            #("VERB", '-VERB-\d+'), # predicate
+            ("CONST", '-CONST-'), # const
             ("REENTRANCY", '-RET-'),  #Reentrancy
             ("ENTITY", 'ENT_([^\s()]+)'),  #Entity
             ("NER", 'NE_([^\s()]+)'), #Named entity
             ("PRED", '([^\s()]+)-[0-9]+'), #Predicate
-            ("NONPRED", '([^\s()]+)')  #Non predicate variables
+            ("NONPRED", '([^\s()]+)'),  #Non predicate variables
+            ("POLARITY", '\s(\-|\+)(?=[\s\)])')
         ]
 
         token_re = make_compiled_regex(lex_rules)
@@ -345,7 +347,7 @@ class AMR_seq:
                     nodeconcept = token
                     stack.append((PNODE,nodelabel,nodeconcept))
                     state = 2
-                elif type == "SURF":
+                elif type == "CONST":
                     if currpos + 1 < seq_length and parsed_seq[currpos+1][1] == "LPAR":
                         nodelabel = register_var(token)
                         nodeconcept = token
@@ -560,7 +562,7 @@ if __name__ == "__main__":
         amr2sequence(toks, amr_graphs, alignments, poss, seq_result_file, amr_stats)
 
     if FLAGS.seq2amr:
-        amr_result_file = 'amr.%s' % FLAGS.version
+        amr_result_file = os.path.join(FLAGS.data_dir, 'amr.%s' % FLAGS.version)
         sequence2amr(toks, amrseqs, amr_result_file)
 
 

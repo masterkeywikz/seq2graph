@@ -63,4 +63,6 @@ target/
 
 # emacs back up file
 *~
-tensorflowAMR/
+tensorflowAMR/data/
+tensorflowAMR/models/
+log*
