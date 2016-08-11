@@ -1,0 +1,198 @@
+!_TAG_FILE_FORMAT	2	/extended format; --format=1 will not append ;" to lines/
+!_TAG_FILE_SORTED	1	/0=unsorted, 1=sorted, 2=foldcase/
+!_TAG_PROGRAM_AUTHOR	Darren Hiebert	/dhiebert@users.sourceforge.net/
+!_TAG_PROGRAM_NAME	Exuberant Ctags	//
+!_TAG_PROGRAM_URL	http://ctags.sourceforge.net	/official site/
+!_TAG_PROGRAM_VERSION	5.8	//
+AMR	./amr.py	/^class AMR(object):$/;"	c
+AMREdge	./amr_graph.py	/^class AMREdge(object):$/;"	c
+AMRFragment	./amr_fragment.py	/^class AMRFragment(object):$/;"	c
+AMRGraph	./amr_graph.py	/^class AMRGraph(object):$/;"	c
+AMRNode	./amr_graph.py	/^class AMRNode(object):$/;"	c
+AMR_stats	./categorize_amr.py	/^class AMR_stats(object):$/;"	c
+__eq__	./amr_fragment.py	/^    def __eq__(self, other):$/;"	m	class:AMRFragment	file:
+__hash__	./amr_fragment.py	/^    def __hash__(self):$/;"	m	class:AMRFragment	file:
+__init__	./amr.py	/^  def __init__(self,var_list=None,var_value_list=None,link_list=None,const_link_list=None):$/;"	m	class:AMR
+__init__	./amr_fragment.py	/^    def __init__(self, n_edges, n_nodes, graph):$/;"	m	class:AMRFragment
+__init__	./amr_graph.py	/^    def __init__(self, graph, is_const = False):$/;"	m	class:AMRNode
+__init__	./amr_graph.py	/^    def __init__(self, label, graph, h_node, t_node = None):$/;"	m	class:AMREdge
+__init__	./amr_graph.py	/^    def __init__(self, line):$/;"	m	class:AMRGraph
+__init__	./categorize_amr.py	/^    def __init__(self):$/;"	m	class:AMR_stats
+__repr__	./amr.py	/^  def __repr__(self):$/;"	m	class:AMR	file:
+__str__	./amr.py	/^  def __str__(self):$/;"	m	class:AMR	file:
+__str__	./amr_fragment.py	/^    def __str__(self):$/;"	m	class:AMRFragment	file:
+__str__	./amr_graph.py	/^    def __str__(self):$/;"	m	class:AMREdge	file:
+__str__	./amr_graph.py	/^    def __str__(self):$/;"	m	class:AMRGraph	file:
+__str__	./amr_graph.py	/^    def __str__(self):$/;"	m	class:AMRNode	file:
+__str__	./categorize_amr.py	/^    def __str__(self):$/;"	m	class:AMR_stats	file:
+add_ext_node	./amr_fragment.py	/^    def add_ext_node(self, node_num):$/;"	m	class:AMRFragment
+add_incoming	./amr_graph.py	/^    def add_incoming(self, edge):$/;"	m	class:AMRNode
+add_node	./amr.py	/^  def add_node(node_value):$/;"	m	class:AMR
+add_parent_edge	./amr_graph.py	/^    def add_parent_edge(self, edge):$/;"	m	class:AMRNode
+all_aligned_spans	./re_utils.py	/^def all_aligned_spans(frag, opt_toks, role_toks, unaligned):$/;"	f
+all_edges	./amr_fragment.py	/^    def all_edges(self):$/;"	m	class:AMRFragment
+all_entities	./entities.py	/^    all_entities = load_entities(sys.argv[3])$/;"	v
+amr	./amr_graph.py	/^import amr$/;"	i
+amr_fragment	./amr_graph.py	/^import amr_fragment$/;"	i
+amr_graph	./amr_utils.py	/^import amr_graph$/;"	i
+amr_parser	./amr_graph.py	/^import amr_parser$/;"	i
+argparse	./categorize_amr.py	/^import argparse$/;"	i
+argparser	./categorize_amr.py	/^    argparser = argparse.ArgumentParser()$/;"	v
+args	./categorize_amr.py	/^    args = argparser.parse_args()$/;"	v
+bitarray	./amr_fragment.py	/^from bitarray import bitarray$/;"	i
+bitarray	./amr_fragment.py	/^import bitarray$/;"	i
+build_all_entity_fragments	./amr_graph.py	/^    def build_all_entity_fragments(self, node, type):$/;"	m	class:AMRGraph
+build_bimap	./categorize_amr.py	/^def build_bimap(tok2frags):$/;"	f
+build_entity_fragment	./amr_graph.py	/^    def build_entity_fragment(self, node):$/;"	m	class:AMRGraph
+build_ext_list	./amr_fragment.py	/^    def build_ext_list(self):$/;"	m	class:AMRFragment
+build_ext_set	./amr_fragment.py	/^    def build_ext_set(self):$/;"	m	class:AMRFragment
+cPickle	./amr_utils.py	/^import cPickle$/;"	i
+cPickle	./categorize_amr.py	/^import cPickle$/;"	i
+cPickle	./entities.py	/^import cPickle$/;"	i
+check_adjacent	./amr_fragment.py	/^def check_adjacent(f1, f2):$/;"	f
+check_consist	./amr_fragment.py	/^def check_consist(parent, children):$/;"	f
+check_disjoint	./amr_fragment.py	/^def check_disjoint(f1, f2):$/;"	f
+check_self_cycle	./amr_graph.py	/^    def check_self_cycle(self):$/;"	m	class:AMRGraph
+collapsed_dfs	./amr_graph.py	/^    def collapsed_dfs(self, root2fragment):$/;"	m	class:AMRGraph
+collapsed_form	./amr_graph.py	/^    def collapsed_form(self, root2fragment, root2entitynames):$/;"	m	class:AMRGraph
+collect_stats	./categorize_amr.py	/^    def collect_stats(self, amr_graphs):$/;"	m	class:AMR_stats
+combine_fragments	./amr_fragment.py	/^def combine_fragments(f1, f2, refine=False):$/;"	f
+concept_label	./amr_graph.py	/^def concept_label(label):$/;"	f
+connect_adjacent	./amr_fragment.py	/^def connect_adjacent(frags, logger):$/;"	f
+connect_all_internal_edges	./amr_fragment.py	/^def connect_all_internal_edges(f, edge_alignment, refine=False):$/;"	f
+copy	./amr_fragment.py	/^import copy$/;"	i
+datetime	./logger.py	/^import datetime$/;"	i
+defaultdict	./amr.py	/^from collections import defaultdict$/;"	i
+defaultdict	./amr_graph.py	/^from collections import deque, defaultdict$/;"	i
+defaultdict	./amr_parser.py	/^from collections import defaultdict$/;"	i
+defaultdict	./categorize_amr.py	/^from collections import defaultdict$/;"	i
+delete_pattern	./amr_graph.py	/^from re_utils import extract_patterns, delete_pattern$/;"	i
+delete_pattern	./re_utils.py	/^def delete_pattern(s_repr, pattern):$/;"	f
+deque	./amr_graph.py	/^from collections import deque, defaultdict$/;"	i
+derive_gld_rel	./amr_graph.py	/^    def derive_gld_rel(self, amr_fragments, frag_map, curr_alignment):$/;"	m	class:AMRGraph
+dfs	./amr_graph.py	/^    def dfs(self):$/;"	m	class:AMRGraph
+dump2dir	./categorize_amr.py	/^    def dump2dir(self, dir):$/;"	m	class:AMR_stats
+dump_file	./categorize_amr.py	/^        def dump_file(f, dict):$/;"	f	function:AMR_stats.dump2dir
+edge_count	./amr_fragment.py	/^    def edge_count(self):$/;"	m	class:AMRFragment
+edge_list	./amr_fragment.py	/^    def edge_list(self):$/;"	m	class:AMRFragment
+edge_set	./amr_graph.py	/^    def edge_set(self):$/;"	m	class:AMRNode
+entities_inline	./entities.py	/^from identify_entity import entities_inline$/;"	i
+entity_name	./amr_graph.py	/^    def entity_name(self):$/;"	m	class:AMRNode
+ext_nodes_str	./amr_fragment.py	/^    def ext_nodes_str(self):$/;"	m	class:AMRFragment
+extract_all_entities	./amr_graph.py	/^    def extract_all_entities(self):$/;"	m	class:AMRGraph
+extract_entities	./amr_graph.py	/^    def extract_entities(self):$/;"	m	class:AMRGraph
+extract_entity_spans	./re_utils.py	/^def extract_entity_spans(frag, opt_toks, role_toks, unaligned):$/;"	f
+extract_fragments	./categorize_amr.py	/^def extract_fragments(alignments, amr_graph):$/;"	f
+extract_patterns	./amr_graph.py	/^from re_utils import extract_patterns, delete_pattern$/;"	i
+extract_patterns	./re_utils.py	/^def extract_patterns(s_repr, pattern):$/;"	f
+extract_unaligned_fragments	./amr_graph.py	/^    def extract_unaligned_fragments(self, edge_alignment):$/;"	m	class:AMRGraph
+file	./logger.py	/^file = sys.stderr$/;"	v
+filter_vars	./filter_stop_words.py	/^def filter_vars(line):$/;"	f
+find_common_roots	./amr_fragment.py	/^def find_common_roots(root1, root2, amr_graph, edge_alignment):$/;"	f
+find_unaligned_edge	./amr_fragment.py	/^def find_unaligned_edge(curr_index, another_index, amr_graph, edge_alignment):$/;"	f
+find_unaligned_path	./amr_fragment.py	/^def find_unaligned_path(curr_index, frag, edge_alignment, refine=False):$/;"	f
+frag_repr	./amr_fragment.py	/^    def frag_repr(self, node_index, visited_index):$/;"	m	class:AMRFragment
+from_AMR_line	./amr_parser.py	/^def from_AMR_line(line):$/;"	f
+general_combine_fragments	./amr_fragment.py	/^def general_combine_fragments(f1, f2, edge_alignment, refine=False):$/;"	f
+get_all_descendent	./amr_graph.py	/^    def get_all_descendent(self):$/;"	m	class:AMRNode
+get_all_descendent_edge	./amr_graph.py	/^    def get_all_descendent_edge(self):$/;"	m	class:AMRNode
+get_amr_line	./amr_utils.py	/^def get_amr_line(input_f):$/;"	f
+get_ancestors	./amr_graph.py	/^    def get_ancestors(self, n, stop_if_see = None):$/;"	m	class:AMRGraph
+get_child	./amr_graph.py	/^    def get_child(self, i):$/;"	m	class:AMRNode
+get_children_str	./amr_graph.py	/^    def get_children_str(self):$/;"	m	class:AMRNode
+get_concept_relation	./amr_graph.py	/^    def get_concept_relation(self, s_rep):$/;"	m	class:AMRGraph
+get_from_path	./amr_graph.py	/^    def get_from_path(self, path):$/;"	m	class:AMRGraph
+get_path	./amr_graph.py	/^    def get_path(self, n1, n2):$/;"	m	class:AMRGraph
+get_path_v2	./amr_graph.py	/^    def get_path_v2(self, n1, n2):$/;"	m	class:AMRGraph
+get_relation_edges	./amr_graph.py	/^    def get_relation_edges(self):$/;"	m	class:AMRGraph
+get_triples	./amr.py	/^  def get_triples(self):$/;"	m	class:AMR
+get_triples2	./amr.py	/^  def get_triples2(self):$/;"	m	class:AMR
+get_unvisited_children	./amr_graph.py	/^    def get_unvisited_children(self, visited, is_sort = True):$/;"	m	class:AMRNode
+identify_entities	./entities.py	/^def identify_entities(tok_file, ner_file, entity_set):$/;"	f
+init_ext_frag	./amr_fragment.py	/^def init_ext_frag(frag, is_pred=False, is_op=False):$/;"	f
+initialize_from_alignment	./amr_fragment.py	/^    def initialize_from_alignment(nodes, edges, graph=None):$/;"	m	class:AMRFragment
+isLeaf	./amr_graph.py	/^    def isLeaf():$/;"	m	class:AMREdge
+is_const	./amr_graph.py	/^    def is_const(self, node):$/;"	m	class:AMRGraph
+is_date	./amr_graph.py	/^    def is_date(self):$/;"	m	class:AMRNode
+is_date_entity	./amr_graph.py	/^    def is_date_entity(self):$/;"	m	class:AMRNode
+is_entity	./amr_graph.py	/^    def is_entity(self, node):$/;"	m	class:AMRGraph
+is_ext	./amr_fragment.py	/^    def is_ext(self, node_num):$/;"	m	class:AMRFragment
+is_leaf	./amr_graph.py	/^    def is_leaf(self):$/;"	m	class:AMRNode
+is_location	./amr_graph.py	/^    def is_location(self):$/;"	m	class:AMRNode
+is_named_entity	./amr_graph.py	/^    def is_named_entity(self): #Added for the new labeled data$/;"	m	class:AMRNode
+is_named_entity	./amr_graph.py	/^    def is_named_entity(self, node):$/;"	m	class:AMRGraph
+is_negative_polarity	./amr_graph.py	/^    def is_negative_polarity(self):$/;"	m	class:AMRNode
+is_pred	./amr_graph.py	/^    def is_pred(self):$/;"	m	class:AMRNode
+is_predicate	./amr_graph.py	/^    def is_predicate(self, node):$/;"	m	class:AMRGraph
+is_root_arc	./amr_graph.py	/^def is_root_arc(edge_label):$/;"	f
+is_var_node	./amr_graph.py	/^    def is_var_node(self):$/;"	m	class:AMRNode
+level	./logger.py	/^level = 1$/;"	v
+linearize_amr	./categorize_amr.py	/^def linearize_amr(args):$/;"	f
+loadFromDir	./categorize_amr.py	/^    def loadFromDir(self, dir):$/;"	m	class:AMR_stats
+load_amr_graphs	./amr_utils.py	/^def load_amr_graphs(amr_file):$/;"	f
+load_entities	./entities.py	/^def load_entities(stats_dir):$/;"	f
+load_file	./categorize_amr.py	/^        def load_file(f, dict):$/;"	f	function:AMR_stats.loadFromDir
+logger	./categorize_amr.py	/^import logger$/;"	i
+main	./filter_stop_words.py	/^def main(argv):$/;"	f
+match_word	./amr_graph.py	/^def match_word(label, unaligned_words, lemma_map, stop_words):$/;"	f
+merge_child_fragment	./amr_fragment.py	/^def merge_child_fragment(fp, fc, rel_edge, refine=False):$/;"	f
+missing_edges	./amr_fragment.py	/^    def missing_edges(self):$/;"	m	class:AMRFragment
+namedEntityMention	./amr_graph.py	/^    def namedEntityMention(self):$/;"	m	class:AMRNode
+node_label	./amr_graph.py	/^    def node_label(self):$/;"	m	class:AMRNode
+node_list	./amr_fragment.py	/^    def node_list(self):$/;"	m	class:AMRFragment
+node_str	./amr_graph.py	/^    def node_str(self):$/;"	m	class:AMRNode
+node_str_nosuffix	./amr_graph.py	/^    def node_str_nosuffix(self):$/;"	m	class:AMRNode
+os	./amr_utils.py	/^import os$/;"	i
+os	./categorize_amr.py	/^import os$/;"	i
+os	./entities.py	/^import re, sys, os$/;"	i
+out_amr	./amr.py	/^  def out_amr(self):$/;"	m	class:AMR
+parse_AMR_line	./amr.py	/^  def parse_AMR_line(line):$/;"	m	class:AMR
+parse_indexes	./re_utils.py	/^def parse_indexes(toks):$/;"	f
+pickle	./categorize_amr.py	/^import pickle$/;"	i
+print_info	./amr_graph.py	/^    def print_info(self):$/;"	m	class:AMRGraph
+print_variables	./amr_graph.py	/^    def print_variables(self):$/;"	m	class:AMRGraph
+re	./amr_graph.py	/^import sys, re$/;"	i
+re	./entities.py	/^import re, sys, os$/;"	i
+re	./re_utils.py	/^import re$/;"	i
+rebuild_fragment_map	./categorize_amr.py	/^def rebuild_fragment_map(tok2frags):$/;"	f
+recall_unaligned_concepts	./amr_graph.py	/^    def recall_unaligned_concepts(self, edge_alignment, unaligned_toks, lemma_map, stop_words, refine=False):$/;"	m	class:AMRGraph
+removeRedundant	./preprocess.py	/^def removeRedundant(toks, entity_spans, op_toks):$/;"	f
+rename_node	./amr.py	/^  def rename_node(self,prefix):$/;"	m	class:AMR
+retrieve_first_concept	./amr_graph.py	/^    def retrieve_first_concept(self, i_path):$/;"	m	class:AMRGraph
+retrieve_fragment	./amr_graph.py	/^    def retrieve_fragment(self, integer_reps):$/;"	m	class:AMRGraph
+retrieve_one_concept	./amr_graph.py	/^    def retrieve_one_concept(self, child_num, par_node_index):$/;"	m	class:AMRGraph
+set_const_edge	./amr_graph.py	/^    def set_const_edge(self, edge):$/;"	m	class:AMRNode
+set_coref	./amr_graph.py	/^    def set_coref(self, val):$/;"	m	class:AMREdge
+set_edge	./amr_fragment.py	/^    def set_edge(self, edge_num):$/;"	m	class:AMRFragment
+set_edges	./amr_fragment.py	/^    def set_edges(self, edges):$/;"	m	class:AMRFragment
+set_ext_set	./amr_fragment.py	/^    def set_ext_set(self, ext_set):$/;"	m	class:AMRFragment
+set_lemmas	./amr_graph.py	/^    def set_lemmas(self, s):$/;"	m	class:AMRGraph
+set_node	./amr_fragment.py	/^    def set_node(self, node_num):$/;"	m	class:AMRFragment
+set_nodes	./amr_fragment.py	/^    def set_nodes(self, nodes):$/;"	m	class:AMRFragment
+set_poss	./amr_graph.py	/^    def set_poss(self, s):$/;"	m	class:AMRGraph
+set_quote	./amr_graph.py	/^    def set_quote(self, val):$/;"	m	class:AMRNode
+set_reenter	./amr_graph.py	/^    def set_reenter(self, val):$/;"	m	class:AMRNode
+set_root	./amr_fragment.py	/^    def set_root(self, node_num):$/;"	m	class:AMRFragment
+set_sentence	./amr_graph.py	/^    def set_sentence(self, s):$/;"	m	class:AMRGraph
+set_span	./amr_fragment.py	/^    def set_span(self, start, end):$/;"	m	class:AMRFragment
+single_exp	./amr_fragment.py	/^    def single_exp(self):$/;"	m	class:AMRFragment
+statistics	./amr_graph.py	/^    def statistics(self):$/;"	m	class:AMRGraph
+str_list	./amr_fragment.py	/^    def str_list(self):$/;"	m	class:AMRFragment
+str_side	./amr_fragment.py	/^    def str_side(self):$/;"	m	class:AMRFragment
+surface_check_var	./amr_parser.py	/^def surface_check_var(s):$/;"	f
+sys	./amr.py	/^import sys$/;"	i
+sys	./amr_fragment.py	/^import sys$/;"	i
+sys	./amr_graph.py	/^import sys, re$/;"	i
+sys	./amr_parser.py	/^import sys$/;"	i
+sys	./amr_utils.py	/^import sys$/;"	i
+sys	./categorize_amr.py	/^import sys$/;"	i
+sys	./entities.py	/^import re, sys, os$/;"	i
+sys	./filter_stop_words.py	/^import sys$/;"	i
+sys	./logger.py	/^import sys$/;"	i
+time	./categorize_amr.py	/^import time$/;"	i
+to_edge_labeled	./amr.py	/^  def to_edge_labeled(self):$/;"	m	class:AMR
+unique_edge	./categorize_amr.py	/^def unique_edge(frag):$/;"	f
+update	./categorize_amr.py	/^    def update(self, local_re, local_pre, local_non, local_con, local_ent, local_ne):$/;"	m	class:AMR_stats
+var_from_graph	./amr_fragment.py	/^    def var_from_graph(amr_graph, binary_reps):$/;"	m	class:AMRFragment
+write	./logger.py	/^def write(s):$/;"	f
+writeln	./logger.py	/^def writeln(s=""):$/;"	f
