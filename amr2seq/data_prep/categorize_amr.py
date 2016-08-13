@@ -9,6 +9,7 @@ from amr_utils import *
 import logger
 import argparse
 from re_utils import *
+from preprocess import *
 from collections import defaultdict
 def build_bimap(tok2frags):
     frag2map = defaultdict(set)
@@ -43,6 +44,69 @@ def rebuild_fragment_map(tok2frags):
                 new_frag_list.append(min_frag)
             tok2frags[index] = new_frag_list
     return tok2frags
+
+def mergeSpans(index_to_spans):
+    for index in index_to_spans:
+        span_list = index_to_spans[index]
+        new_span_list = []
+        curr_start = None
+        curr_end = None
+
+        for (index, (start, end)) in enumerate(span_list):
+            if curr_end is not None:
+                assert start >= curr_end
+                if start > curr_end: #There is a gap in between
+                    new_span_list.append((curr_start, curr_end))
+                    curr_start = start
+                    curr_end = end
+                else: #They equal, so update the end
+                    curr_end = end
+
+            else:
+                curr_start = start
+                curr_end = end
+
+            if index + 1 == len(span_list): #Have reached the last position
+                new_span_list.append((curr_start, curr_end))
+        index_to_spans[index] = new_span_list
+    return index_to_spans
+
+def extractNodeMapping(alignments, amr_graph):
+    node_to_span = defaultdict(list)
+    edge_to_span = defaultdict(list)
+
+    num_nodes = len(amr_graph.nodes)
+    num_edges = len(amr_graph.edges)
+
+    op_toks = []
+    role_toks = []
+    for curr_align in reversed(alignments):
+        curr_tok = curr_align.split('-')[0]
+        curr_frag = curr_align.split('-')[1]
+
+        span_start = int(curr_tok)
+        span_end = span_start + 1
+
+        (index_type, index) = amr_graph.get_concept_relation(curr_frag)
+        if index_type == 'c':
+            node_to_span[index].append((span_start, span_end))
+            curr_node = amr_graph.nodes[index]
+
+            #Extract ops for entities
+            if len(curr_node.p_edges) == 1:
+                par_edge = amr_graph.edges[curr_node.p_edges[0]]
+                if 'op' == par_edge.label[:2]:
+                    op_toks.append((span_start, curr_node.c_edge))
+
+            if curr_node.is_named_entity():
+                role_toks.append((span_start, curr_node.c_edge))
+
+        else:
+            edge_to_span[index].append((span_start, span_end))
+    node_to_span = mergeSpans(node_to_span)
+    edge_to_span = mergeSpans(edge_to_span)
+
+    return (op_toks, role_toks, node_to_span, edge_to_span)
 
 def extract_fragments(alignments, amr_graph):
     tok2frags = defaultdict(list)
@@ -227,9 +291,9 @@ def linearize_amr(args):
         amr_statistics.loadFromDir(args.stats_dir)
         print amr_statistics
     else:
-        os.system('mkdir -p %s' % stats_dir)
+        os.system('mkdir -p %s' % args.stats_dir)
         amr_statistics.collect_stats(amr_graphs)
-        amr_statistics.dump2dir(stats_dir)
+        amr_statistics.dump2dir(args.stats_dir)
 
     singleton_num = 0.0
     multiple_num = 0.0
@@ -262,25 +326,21 @@ def linearize_amr(args):
 
         aligned_set = set()
 
-        (opt_toks, role_toks, aligned_fragments) = extract_fragments(alignment_seq, amr)
+        (op_toks, role_toks, node_to_span, edge_to_span) = extractNodeMapping(alignment_seq, amr)
 
-        if not aligned_fragments:
-            logger.writeln('no alignments')
-            continue
+        #if not aligned_fragments:
+        #    logger.writeln('no alignments')
+        #    continue
 
-        temp_aligned = set(aligned_fragments.keys())
+        #temp_aligned = set(aligned_fragments.keys())
         aligned_fragments = sorted(aligned_fragments.items(), key=lambda frag: frag[0])
 
         temp_unaligned = set(xrange(len(pos_seq))) - temp_aligned
 
-        #(entity_frags, root2entityfrag, root2entitynames) = amr.extract_all_entities()
-
-        #new_graph = AMRGraph.collapsed_graph(amr, root2entityfrag, root2entitynames)
-        #logger.writeln(str(new_graph))
-        ##logger.writeln(amr.collapsed_form(root2entityfrag, root2entitynames))
         all_frags = []
+        all_alignments = defaultdict(list)
 
-        ####Extract entities#####
+        ####Extract entities mapping#####
         for (frag, frag_label) in amr.extract_entities():
             if len(opt_toks) == 0:
                 logger.writeln("No alignment for the entity found")
@@ -292,12 +352,14 @@ def linearize_amr(args):
             print 'fragment entity mention: %s' % ' '.join(entity_mention_toks)
 
             total_num += 1.0
-            #logger.writeln(str(frag))
             if entity_spans:
+                entity_spans = removeRedundant(tok_seq, entity_spans, entity_mention_toks)
                 if len(entity_spans) == 1:
                     singleton_num += 1.0
+                    logger.writeln('Single fragment')
                     for (frag_start, frag_end) in entity_spans:
                         logger.writeln(' '.join(tok_seq[frag_start:frag_end]))
+                        all_alignments[frag.root].append((frag_start, frag_end))
                 else:
                     multiple_num += 1.0
                     logger.writeln('Multiple fragment')
@@ -306,25 +368,10 @@ def linearize_amr(args):
 
                     for (frag_start, frag_end) in entity_spans:
                         logger.writeln(' '.join(tok_seq[frag_start:frag_end]))
+                        all_alignments[frag.root].append((frag_start, frag_end))
             else:
                 empty_num += 1.0
-
-            #(frag_start, frag_end, multiple) = extract_entity_spans(frag, opt_toks, role_toks, temp_unaligned)
-            #if frag_start is None:
-            #    logger.writeln("No alignment found")
-            #    logger.writeln(str(frag))
-
-            #    no_alignment = True
-            #    continue
-
-            #if multiple:
-            #    has_multiple = True
-            #    logger.writeln("Multiple found here!")
-            #    logger.writeln(' '.join(tok_seq[frag_start:frag_end]))
-
-            #frag.set_span(frag_start, frag_end)
-
-            ##amr.collapse_entities(frag, frag_label)
+                _ = all_alignments[frag.root]
 
             #new_aligned = set(xrange(frag_start, frag_end))
             #if len(new_aligned & aligned_set) != 0:
