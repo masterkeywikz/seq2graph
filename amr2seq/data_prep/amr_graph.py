@@ -8,6 +8,7 @@ import amr_fragment
 from amr_fragment import *
 from collections import deque, defaultdict
 from re_utils import extract_patterns, delete_pattern
+from constants import *
 
 class AMREdge(object):
     def __init__(self, label, graph, h_node, t_node = None):
@@ -214,10 +215,6 @@ class AMRGraph(object):
     def __init__(self, line):
         vars, var_values, rel_links = from_AMR_line(line)
 
-        #print '============'
-        #print 'vars', vars
-        #print 'var_values', var_values
-
         self.dict = {}
         label_to_node = {}
         self.nodes = []   #used to record all the nodes
@@ -225,6 +222,12 @@ class AMRGraph(object):
         self.edges = []
         self.edge_dict = {}
         self.root = None
+
+        self.ne_index = 0
+        self.ent_index = 0
+        self.verb_index = 0
+        self.var_index = 0
+        self.const_index = 0
 
         for i in range(len(vars)):
             curr_var = vars[i]
@@ -303,6 +306,56 @@ class AMRGraph(object):
                         curr_node.add_incoming(curr_edge_index)
                         tail_node.add_parent_edge(curr_edge_index)
 
+    def setStats(self, stats):
+        self.stats = stats
+
+    def get_symbol(self, node_index, pred_freq_thre, var_freq_thre):
+        curr_node = self.nodes[node_index]
+        curr_var = curr_node.node_str()
+        if self.is_named_entity(curr_node):
+            exclude_rels = ['wiki','name']
+            entity_name = curr_node.node_str()
+            ret_var = 'NE_%s' % entity_name
+            #ret_var = 'NE_%s-%d' % (entity_name, self.ne_index)
+            #self.ne_index += 1
+            return exclude_rels, ret_var, True
+        elif self.is_entity(curr_node):
+            entity_name = curr_node.node_str()
+            ret_var = 'ENT_%s' % entity_name
+            #ret_var = 'ENT_%s-%d' % (entity_name, self.ent_index)
+            #self.ent_index += 1
+            return [], ret_var, True
+        elif self.is_predicate(curr_node):
+            if self.stats.num_predicates[curr_var] >= pred_freq_thre:
+                ret_var = curr_var
+                categorized = False
+            else:
+                ret_var = VERB
+                #ret_var = VERB + ('%d' % self.verb_index)
+                #self.verb_index += 1
+                categorized = True
+            return [], ret_var, categorized
+        elif self.is_const(curr_node):
+            if curr_var in ['interrogative', 'imperative', 'expressive', '-']:
+                return [], curr_var, False
+            else:
+                ret_var = CONST
+                #ret_var = CONST + ('%d' % self.const_index)
+                #self.const_index += 1
+                return [], ret_var, True
+
+        else:
+            if self.stats.num_nonpredicate_vals[curr_var] >= var_freq_thre:
+                ret_var = curr_var
+                categorized = False
+            else:
+                ret_var = SURF
+                #ret_var = SURF + ('%d' % self.var_index)
+                #self.var_index += 1
+                categorized = True
+            return [], ret_var, categorized
+
+        return [], curr_var, False
 
     def get_ancestors(self, n, stop_if_see = None):
         set_n = {n:('',-1)}
@@ -1233,9 +1286,6 @@ class AMRGraph(object):
                     stack.append((curr_edge.tail, curr_edge))
 
         return (named_entity_nums, entity_nums, predicate_nums, variable_nums, const_nums, reentrancy_nums)
-
-    #Perform a top-down traverse of the AMR graph, also categorize the token sequence
-    #def categorize_pair(self):
 
     #Do a depth-first traversal of the graph, print the amr format
     #Collapsing some fragments into single node repr

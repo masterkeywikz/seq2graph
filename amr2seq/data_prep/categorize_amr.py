@@ -46,15 +46,19 @@ def rebuild_fragment_map(tok2frags):
     return tok2frags
 
 def mergeSpans(index_to_spans):
+    new_index_to_spans = {}
     for index in index_to_spans:
         span_list = index_to_spans[index]
+        span_list = sorted(span_list, key=lambda x:x[1])
         new_span_list = []
         curr_start = None
         curr_end = None
 
-        for (index, (start, end)) in enumerate(span_list):
+        for (idx, (start, end)) in enumerate(span_list):
             if curr_end is not None:
-                assert start >= curr_end
+                #assert start >= curr_end, span_list
+                if start < curr_end:
+                    continue
                 if start > curr_end: #There is a gap in between
                     new_span_list.append((curr_start, curr_end))
                     curr_start = start
@@ -66,12 +70,14 @@ def mergeSpans(index_to_spans):
                 curr_start = start
                 curr_end = end
 
-            if index + 1 == len(span_list): #Have reached the last position
+            if idx + 1 == len(span_list): #Have reached the last position
                 new_span_list.append((curr_start, curr_end))
-        index_to_spans[index] = new_span_list
-    return index_to_spans
+        new_index_to_spans[index] = new_span_list
+    return new_index_to_spans
 
 def extractNodeMapping(alignments, amr_graph):
+    aligned_set = set()
+
     node_to_span = defaultdict(list)
     edge_to_span = defaultdict(list)
 
@@ -86,6 +92,8 @@ def extractNodeMapping(alignments, amr_graph):
 
         span_start = int(curr_tok)
         span_end = span_start + 1
+
+        aligned_set.add(span_start)
 
         (index_type, index) = amr_graph.get_concept_relation(curr_frag)
         if index_type == 'c':
@@ -103,10 +111,10 @@ def extractNodeMapping(alignments, amr_graph):
 
         else:
             edge_to_span[index].append((span_start, span_end))
-    node_to_span = mergeSpans(node_to_span)
-    edge_to_span = mergeSpans(edge_to_span)
+    new_node_to_span = mergeSpans(node_to_span)
+    new_edge_to_span = mergeSpans(edge_to_span)
 
-    return (op_toks, role_toks, node_to_span, edge_to_span)
+    return (op_toks, role_toks, new_node_to_span, new_edge_to_span, aligned_set)
 
 def extract_fragments(alignments, amr_graph):
     tok2frags = defaultdict(list)
@@ -260,6 +268,129 @@ class AMR_stats(object):
 
         return s
 
+#Traverse AMR from top down, also categorize the sequence in case of alignment existed
+def categorizeParallelSequences(amr, tok_seq, all_alignments, pred_freq_thre=50, var_freq_thre=50):
+
+    old_depth = -1
+    depth = -1
+    stack = [(amr.root, TOP, None, 0)] #Start from the root of the AMR
+    aux_stack = []
+    seq = []
+
+    cate_tok_seq = []
+    ret_index = 0
+
+    seq_map = {}   #Map each span to a category
+    visited = set()
+
+    covered = set()
+    multiple_covered = set()
+
+    node_to_label = {}
+    cate_to_index = {}
+
+    while stack:
+        old_depth = depth
+        curr_node_index, rel, parent, depth = stack.pop()
+        curr_node = amr.nodes[curr_node_index]
+        curr_var = curr_node.node_str()
+
+        i = 0
+
+        while old_depth - depth >= i:
+            if aux_stack == []:
+                import pdb
+                pdb.set_trace()
+            seq.append(aux_stack.pop())
+            i+=1
+
+        if curr_node_index in visited: #A reentrancy found
+            seq.append((rel+LBR, None))
+            seq.append((RET + ('-%d' % ret_index), None))
+            ret_index += 1
+            aux_stack.append((RBR+rel, None))
+            continue
+
+        visited.add(curr_node_index)
+        seq.append((rel+LBR, None))
+
+        exclude_rels, cur_symbol, categorized = amr.get_symbol(curr_node_index, pred_freq_thre, var_freq_thre)
+
+        if categorized:
+            node_to_label[curr_node_index] = cur_symbol
+
+        seq.append((cur_symbol, curr_node_index))
+        aux_stack.append((RBR+rel, None))
+
+        for edge_index in reversed(curr_node.v_edges):
+            curr_edge = amr.edges[edge_index]
+            child_index = curr_edge.tail
+            if curr_edge.label in exclude_rels:
+                continue
+            stack.append((child_index, curr_edge.label, curr_var, depth+1))
+
+    seq.extend(aux_stack[::-1])
+    cate_span_map, end_index_map, covered_toks = categorizedSpans(all_alignments, node_to_label)
+
+    map_seq = []
+    nodeindex_to_tokindex = {}  #The mapping
+    label_to_index = defaultdict(int)
+
+    for tok_index, tok in enumerate(tok_seq):
+        if tok_index not in covered_toks:
+            cate_tok_seq.append(tok)
+            continue
+
+        if tok_index in end_index_map: #This span can be mapped to category
+            end_index = end_index_map[tok_index]
+            assert (tok_index, end_index) in cate_span_map
+
+            node_index, aligned_label = cate_span_map[(tok_index, end_index)]
+
+            if node_index not in nodeindex_to_tokindex:
+                nodeindex_to_tokindex[node_index] = defaultdict(int)
+
+            indexed_aligned_label = '%s-%d' % (aligned_label, label_to_index[aligned_label])
+            nodeindex_to_tokindex[node_index] = indexed_aligned_label
+            label_to_index[aligned_label] += 1
+
+
+            cate_tok_seq.append(indexed_aligned_label)
+
+            align_str = '%d-%d:%s:%d:%s:%s' % (tok_index, end_index, ' '.join(tok_seq[tok_index:end_index]), node_index, amr.nodes[node_index].node_str(), indexed_aligned_label)
+            map_seq.append(align_str)
+
+    #print 'original:'
+    #print seq
+    seq = [nodeindex_to_tokindex[node_index] if node_index in nodeindex_to_tokindex else label for (label, node_index) in seq]
+    #print seq
+    #print cate_tok_seq, map_seq
+    #print nodeindex_to_tokindex
+
+    return seq, cate_tok_seq, map_seq
+
+def categorizedSpans(all_alignments, node_to_label):
+    visited = set()
+
+    all_alignments = sorted(all_alignments.items(), key=lambda x:len(x[1]))
+    span_map = {}
+    end_index_map = {}
+
+    for (node_index, aligned_spans) in all_alignments:
+        if node_index in node_to_label:
+            aligned_label = node_to_label[node_index]
+            for (span_start, span_end) in aligned_spans:
+                span_set = set(xrange(span_start, span_end))
+                if len(span_set & visited) != 0:
+                    continue
+
+                visited |= span_set
+
+                span_map[(span_start, span_end)] = (node_index, aligned_label)
+                end_index_map[span_start] = span_end
+
+    return span_map, end_index_map, visited
+
 def linearize_amr(args):
     logger.file = open(os.path.join(args.run_dir, 'logger'), 'w')
 
@@ -300,10 +431,20 @@ def linearize_amr(args):
     total_num = 0.0
     empty_num = 0.0
 
+    amr_seq_file = os.path.join(args.run_dir, 'amrseq')
+    tok_seq_file = os.path.join(args.run_dir, 'tokseq')
+    map_seq_file = os.path.join(args.run_dir, 'mapseq')
+
+    amrseq_wf = open(amr_seq_file, 'w')
+    tokseq_wf = open(tok_seq_file, 'w')
+    mapseq_wf = open(map_seq_file, 'w')
+
     for (sent_index, (tok_seq, pos_seq, alignment_seq, amr)) in enumerate(zip(toks, poss, alignments, amr_graphs)):
 
         logger.writeln('Sentence #%d' % (sent_index+1))
         logger.writeln(' '.join(tok_seq))
+
+        amr.setStats(amr_statistics)
 
         edge_alignment = bitarray(len(amr.edges))
         if edge_alignment.count() != 0:
@@ -326,14 +467,7 @@ def linearize_amr(args):
 
         aligned_set = set()
 
-        (op_toks, role_toks, node_to_span, edge_to_span) = extractNodeMapping(alignment_seq, amr)
-
-        #if not aligned_fragments:
-        #    logger.writeln('no alignments')
-        #    continue
-
-        #temp_aligned = set(aligned_fragments.keys())
-        aligned_fragments = sorted(aligned_fragments.items(), key=lambda frag: frag[0])
+        (opt_toks, role_toks, node_to_span, edge_to_span, temp_aligned) = extractNodeMapping(alignment_seq, amr)
 
         temp_unaligned = set(xrange(len(pos_seq))) - temp_aligned
 
@@ -373,69 +507,33 @@ def linearize_amr(args):
                 empty_num += 1.0
                 _ = all_alignments[frag.root]
 
-            #new_aligned = set(xrange(frag_start, frag_end))
-            #if len(new_aligned & aligned_set) != 0:
-            #    print str(amr)
-            #    print str(frag)
-            #    has_multiple = True
-            #    break
-            #    #continue
+        for node_index in node_to_span:
+            if node_index in all_alignments:
+                continue
 
-            #aligned_set |= new_aligned
-            #all_frags.append(frag)
+            all_alignments[node_index] = node_to_span[node_index]
+            if len(node_to_span[node_index]) > 1:
+                print 'Multiple found:'
+                print amr.nodes[node_index].node_str()
+                for (span_start, span_end) in node_to_span[node_index]:
+                    print ' '.join(tok_seq[span_start:span_end])
 
-            #if (edge_alignment & frag.edges).count() != 0:
-            #    has_multiple = True
-
-            #edge_alignment |= frag.edges
-
-        #if no_alignment:
-        #    continue
-
-        #one2many = False
-        #######Extra other alignments######
-        #logger.writeln('Aligned fragments:')
-        #for (index, frag_list) in aligned_fragments:
-        #    if index in aligned_set:
-        #        continue
-
-        #    assert len(frag_list) > 0
-        #    non_conflict = 0
-        #    non_conflict_list = []
-        #    for frag in frag_list:
-        #        if (edge_alignment & frag.edges).count() == 0:
-        #            non_conflict += 1
-        #            non_conflict_list.append(frag)
-
-        #    if non_conflict != 1:
-        #        one2many = True
-
-        #    used_frag = None
-        #    if non_conflict == 0:
-        #        used_frag = frag_list[0]
-        #    else:
-        #        used_frag = non_conflict_list[0]
-
-        #    edge_alignment |= used_frag.edges
-        #    all_frags.append(used_frag)
-
-        #    aligned_set.add(index)
-
-        #logger.writeln("%d aligned edges out of %d total" % (edge_alignment.count(), len(edge_alignment)))
-        #used_sents += 1
+        ##Based on the alignment from node index to spans in the string
 
         assert len(tok_seq) == len(pos_seq)
 
-        #unaligned_toks = [(i, tok) for (i, tok) in enumerate(tok_seq) if i not in aligned_set]
-        #(aligned, unaligned) = amr.recall_unaligned_concepts(edge_alignment, unaligned_toks, lemma_map, stop_words)
-        #aligned = [x for (x, y, z, k) in aligned]
+        amr_seq, cate_tok_seq, map_seq = categorizeParallelSequences(amr, tok_seq, all_alignments, args.min_prd_freq, args.min_var_freq)
+        print >> amrseq_wf, ' '.join(amr_seq)
+        print >> tokseq_wf, ' '.join(cate_tok_seq)
+        print >> mapseq_wf, ' '.join(map_seq)
 
-        #all_frags += aligned
+    amrseq_wf.close()
+    tokseq_wf.close()
+    mapseq_wf.close()
+
     print "one to one alignment: %lf" % (singleton_num/total_num)
     print "one to multiple alignment: %lf" % (multiple_num/total_num)
     print "one to empty alignment: %lf" % (empty_num/total_num)
-    #amr_statistics.dump2dir(args.run_dir)
-    #print str(amr_statistics)
 
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser()
