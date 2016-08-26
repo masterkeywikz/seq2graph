@@ -11,6 +11,7 @@ import argparse
 from re_utils import *
 from preprocess import *
 from collections import defaultdict
+from entities import identify_entities
 def build_bimap(tok2frags):
     frag2map = defaultdict(set)
     index2frags = defaultdict(set)
@@ -339,6 +340,8 @@ def categorizeParallelSequences(amr, tok_seq, all_alignments, pred_freq_thre=50,
     for tok_index, tok in enumerate(tok_seq):
         if tok_index not in covered_toks:
             cate_tok_seq.append(tok)
+            align_str = '%d-%d++%s++NONE++NONE++NONE' % (tok_index, tok_index+1, tok)
+            map_seq.append(align_str)
             continue
 
         if tok_index in end_index_map: #This span can be mapped to category
@@ -357,15 +360,11 @@ def categorizeParallelSequences(amr, tok_seq, all_alignments, pred_freq_thre=50,
 
             cate_tok_seq.append(indexed_aligned_label)
 
-            align_str = '%d-%d:%s:%d:%s:%s' % (tok_index, end_index, ' '.join(tok_seq[tok_index:end_index]), node_index, amr.nodes[node_index].node_str(), indexed_aligned_label)
+            #align_str = '%d-%d:%s:%d:%s:%s' % (tok_index, end_index, ' '.join(tok_seq[tok_index:end_index]), node_index, amr.nodes[node_index].node_str(), indexed_aligned_label)
+            align_str = '%d-%d++%s++%d++%s++%s' % (tok_index, end_index, ' '.join(tok_seq[tok_index:end_index]), node_index, amr.nodes[node_index].node_str(), aligned_label)
             map_seq.append(align_str)
 
-    #print 'original:'
-    #print seq
     seq = [nodeindex_to_tokindex[node_index] if node_index in nodeindex_to_tokindex else label for (label, node_index) in seq]
-    #print seq
-    #print cate_tok_seq, map_seq
-    #print nodeindex_to_tokindex
 
     return seq, cate_tok_seq, map_seq
 
@@ -402,10 +401,6 @@ def linearize_amr(args):
         tok_file = os.path.join(args.data_dir, 'token')
     pos_file = os.path.join(args.data_dir, 'pos')
 
-    collapsed_tok_file = os.path.join(args.data_dir, 'collapsed_token')
-    collapsed_graph_file = os.path.join(args.data_dir, 'collased_amr')
-    map_file = os.path.join(args.data_dir, 'map')
-
     amr_graphs = load_amr_graphs(amr_file)
     alignments = [line.strip().split() for line in open(alignment_file, 'r')]
     toks = [line.strip().split() for line in open(tok_file, 'r')]
@@ -426,114 +421,224 @@ def linearize_amr(args):
         amr_statistics.collect_stats(amr_graphs)
         amr_statistics.dump2dir(args.stats_dir)
 
-    singleton_num = 0.0
-    multiple_num = 0.0
-    total_num = 0.0
-    empty_num = 0.0
+    if args.parallel:
+        singleton_num = 0.0
+        multiple_num = 0.0
+        total_num = 0.0
+        empty_num = 0.0
 
-    amr_seq_file = os.path.join(args.run_dir, 'amrseq')
-    tok_seq_file = os.path.join(args.run_dir, 'tokseq')
-    map_seq_file = os.path.join(args.run_dir, 'mapseq')
+        amr_seq_file = os.path.join(args.run_dir, 'amrseq')
+        tok_seq_file = os.path.join(args.run_dir, 'tokseq')
+        map_seq_file = os.path.join(args.run_dir, 'mapseq_noindex')
 
-    amrseq_wf = open(amr_seq_file, 'w')
-    tokseq_wf = open(tok_seq_file, 'w')
-    mapseq_wf = open(map_seq_file, 'w')
+        amrseq_wf = open(amr_seq_file, 'w')
+        tokseq_wf = open(tok_seq_file, 'w')
+        mapseq_wf = open(map_seq_file, 'w')
 
-    for (sent_index, (tok_seq, pos_seq, alignment_seq, amr)) in enumerate(zip(toks, poss, alignments, amr_graphs)):
+        for (sent_index, (tok_seq, pos_seq, alignment_seq, amr)) in enumerate(zip(toks, poss, alignments, amr_graphs)):
 
-        logger.writeln('Sentence #%d' % (sent_index+1))
-        logger.writeln(' '.join(tok_seq))
+            logger.writeln('Sentence #%d' % (sent_index+1))
+            logger.writeln(' '.join(tok_seq))
 
-        amr.setStats(amr_statistics)
+            amr.setStats(amr_statistics)
 
-        edge_alignment = bitarray(len(amr.edges))
-        if edge_alignment.count() != 0:
-            edge_alignment ^= edge_alignment
-        assert edge_alignment.count() == 0
+            edge_alignment = bitarray(len(amr.edges))
+            if edge_alignment.count() != 0:
+                edge_alignment ^= edge_alignment
+            assert edge_alignment.count() == 0
 
-        has_cycle = False
-        if amr.check_self_cycle():
-            num_self_cycle += 1
-            has_cycle = True
+            has_cycle = False
+            if amr.check_self_cycle():
+                num_self_cycle += 1
+                has_cycle = True
 
-        amr.set_sentence(tok_seq)
-        amr.set_poss(pos_seq)
+            amr.set_sentence(tok_seq)
+            amr.set_poss(pos_seq)
 
-        aligned_fragments = []
-        reentrancies = {}  #Map multiple spans as reentrancies, keeping only one as original, others as connections
+            aligned_fragments = []
+            reentrancies = {}  #Map multiple spans as reentrancies, keeping only one as original, others as connections
 
-        has_multiple = False
-        no_alignment = False
+            has_multiple = False
+            no_alignment = False
 
-        aligned_set = set()
+            aligned_set = set()
 
-        (opt_toks, role_toks, node_to_span, edge_to_span, temp_aligned) = extractNodeMapping(alignment_seq, amr)
+            (opt_toks, role_toks, node_to_span, edge_to_span, temp_aligned) = extractNodeMapping(alignment_seq, amr)
 
-        temp_unaligned = set(xrange(len(pos_seq))) - temp_aligned
+            temp_unaligned = set(xrange(len(pos_seq))) - temp_aligned
 
-        all_frags = []
-        all_alignments = defaultdict(list)
+            all_frags = []
+            all_alignments = defaultdict(list)
 
-        ####Extract entities mapping#####
-        for (frag, frag_label) in amr.extract_entities():
-            if len(opt_toks) == 0:
-                logger.writeln("No alignment for the entity found")
+            ####Extract entities mapping#####
+            for (frag, frag_label) in amr.extract_entities():
+                if len(opt_toks) == 0:
+                    logger.writeln("No alignment for the entity found")
 
-            (aligned_indexes, entity_spans) = all_aligned_spans(frag, opt_toks, role_toks, temp_unaligned)
-            root_node = amr.nodes[frag.root]
+                (aligned_indexes, entity_spans) = all_aligned_spans(frag, opt_toks, role_toks, temp_unaligned)
+                root_node = amr.nodes[frag.root]
 
-            entity_mention_toks = root_node.namedEntityMention()
-            print 'fragment entity mention: %s' % ' '.join(entity_mention_toks)
+                entity_mention_toks = root_node.namedEntityMention()
+                print 'fragment entity mention: %s' % ' '.join(entity_mention_toks)
 
-            total_num += 1.0
-            if entity_spans:
-                entity_spans = removeRedundant(tok_seq, entity_spans, entity_mention_toks)
-                if len(entity_spans) == 1:
-                    singleton_num += 1.0
-                    logger.writeln('Single fragment')
-                    for (frag_start, frag_end) in entity_spans:
-                        logger.writeln(' '.join(tok_seq[frag_start:frag_end]))
-                        all_alignments[frag.root].append((frag_start, frag_end))
+                total_num += 1.0
+                if entity_spans:
+                    entity_spans = removeRedundant(tok_seq, entity_spans, entity_mention_toks)
+                    if len(entity_spans) == 1:
+                        singleton_num += 1.0
+                        logger.writeln('Single fragment')
+                        for (frag_start, frag_end) in entity_spans:
+                            logger.writeln(' '.join(tok_seq[frag_start:frag_end]))
+                            all_alignments[frag.root].append((frag_start, frag_end))
+                    else:
+                        multiple_num += 1.0
+                        logger.writeln('Multiple fragment')
+                        logger.writeln(aligned_indexes)
+                        logger.writeln(' '.join([tok_seq[index] for index in aligned_indexes]))
+
+                        for (frag_start, frag_end) in entity_spans:
+                            logger.writeln(' '.join(tok_seq[frag_start:frag_end]))
+                            all_alignments[frag.root].append((frag_start, frag_end))
                 else:
-                    multiple_num += 1.0
-                    logger.writeln('Multiple fragment')
-                    logger.writeln(aligned_indexes)
-                    logger.writeln(' '.join([tok_seq[index] for index in aligned_indexes]))
+                    empty_num += 1.0
+                    _ = all_alignments[frag.root]
 
-                    for (frag_start, frag_end) in entity_spans:
-                        logger.writeln(' '.join(tok_seq[frag_start:frag_end]))
-                        all_alignments[frag.root].append((frag_start, frag_end))
-            else:
-                empty_num += 1.0
-                _ = all_alignments[frag.root]
+            for node_index in node_to_span:
+                if node_index in all_alignments:
+                    continue
 
-        for node_index in node_to_span:
-            if node_index in all_alignments:
-                continue
+                all_alignments[node_index] = node_to_span[node_index]
+                if len(node_to_span[node_index]) > 1:
+                    print 'Multiple found:'
+                    print amr.nodes[node_index].node_str()
+                    for (span_start, span_end) in node_to_span[node_index]:
+                        print ' '.join(tok_seq[span_start:span_end])
 
-            all_alignments[node_index] = node_to_span[node_index]
-            if len(node_to_span[node_index]) > 1:
-                print 'Multiple found:'
-                print amr.nodes[node_index].node_str()
-                for (span_start, span_end) in node_to_span[node_index]:
-                    print ' '.join(tok_seq[span_start:span_end])
+            ##Based on the alignment from node index to spans in the string
 
-        ##Based on the alignment from node index to spans in the string
+            assert len(tok_seq) == len(pos_seq)
 
-        assert len(tok_seq) == len(pos_seq)
+            amr_seq, cate_tok_seq, map_seq = categorizeParallelSequences(amr, tok_seq, all_alignments, args.min_prd_freq, args.min_var_freq)
+            print >> amrseq_wf, ' '.join(amr_seq)
+            print >> tokseq_wf, ' '.join(cate_tok_seq)
+            print >> mapseq_wf, '##'.join(map_seq)  #To separate single space
 
-        amr_seq, cate_tok_seq, map_seq = categorizeParallelSequences(amr, tok_seq, all_alignments, args.min_prd_freq, args.min_var_freq)
-        print >> amrseq_wf, ' '.join(amr_seq)
-        print >> tokseq_wf, ' '.join(cate_tok_seq)
-        print >> mapseq_wf, ' '.join(map_seq)
+        amrseq_wf.close()
+        tokseq_wf.close()
+        mapseq_wf.close()
 
-    amrseq_wf.close()
-    tokseq_wf.close()
-    mapseq_wf.close()
+        print "one to one alignment: %lf" % (singleton_num/total_num)
+        print "one to multiple alignment: %lf" % (multiple_num/total_num)
+        print "one to empty alignment: %lf" % (empty_num/total_num)
+    else: #Only build the linearized token sequence
 
-    print "one to one alignment: %lf" % (singleton_num/total_num)
-    print "one to multiple alignment: %lf" % (multiple_num/total_num)
-    print "one to empty alignment: %lf" % (empty_num/total_num)
+        mle_map = loadMap(args.map_file)
+        if args.use_lemma:
+            tok_file = os.path.join(args.data_dir, 'lemmatized_token')
+        else:
+            tok_file = os.path.join(args.data_dir, 'token')
+
+        ner_file = os.path.join(args.data_dir, 'ner')
+
+        all_entities = identify_entities(tok_file, ner_file, mle_map)
+
+        tokseq_result = os.path.join(args.data_dir, 'linearized_tokseq')
+        tokseq_wf = open(tokseq_result, 'w')
+
+        for (sent_index, (tok_seq, pos_seq, entities_in_sent)) in enumerate(zip(toks, poss, all_entities)):
+            print 'snt: %d' % sent_index
+            n_toks = len(tok_seq)
+            aligned_set = set()
+
+            all_spans = []
+            #First align multi tokens
+            for (start, end, entity_typ) in entities_in_sent:
+                if end - start > 1:
+                    new_aligned = set(xrange(start, end))
+                    aligned_set |= new_aligned
+                    entity_name = ' '.join(tok_seq[start:end])
+                    if entity_name in mle_map:
+                        entity_typ = mle_map[entity_name]
+                    else:
+                        entity_typ = 'NE_person'
+                    all_spans.append((start, end, entity_typ))
+
+            #Single token
+            for (index, curr_tok) in enumerate(tok_seq):
+                if index in aligned_set:
+                    continue
+
+                curr_pos = pos_seq[index]
+                aligned_set.add(index)
+
+                if curr_tok in mle_map:
+                    if mle_map[curr_tok].lower() == 'none':
+                        all_spans.append((index, index+1, curr_tok))
+                    else:
+                        all_spans.append((index, index+1, mle_map[curr_tok]))
+                else:
+                    if curr_pos[0] == 'V':
+                        all_spans.append((index, index+1, '-VERB-'))
+                    else:
+                        all_spans.append((index, index+1, '-SURF-'))
+
+            all_spans = sorted(all_spans, key=lambda span: (span[0], span[1]))
+            linearized_tokseq = [l for (start, end, l) in all_spans]
+            linearized_tokseq = getIndexedForm(linearized_tokseq)
+            print >> tokseq_wf, ' '.join(linearized_tokseq)
+        tokseq_wf.close()
+
+def isSpecial(symbol):
+    for l in ['ENT', 'NE', 'VERB', 'SURF', 'CONST']:
+        if l in symbol:
+            return True
+    return False
+
+def getIndexedForm(linearized_tokseq):
+    new_seq = []
+    indexer = {}
+    for tok in linearized_tokseq:
+        if isSpecial(tok):
+            new_tok = '%s-%d' % (tok, indexer.setdefault(tok, 0))
+            indexer[tok] += 1
+            new_seq.append(new_tok)
+        else:
+            new_seq.append(tok)
+    return new_seq
+
+#Given dev or test data, build the linearized token sequence
+#Based on entity mapping from training, NER tagger
+def conceptID(args):
+    return
+
+#Build the entity map for concept identification
+def loadMap(map_file):
+    span_to_cate = {}
+
+    #First load all possible mappings each span has
+    with open(map_file, 'r') as map_f:
+        for line in map_f:
+            if line.strip():
+                spans = line.strip().split('##')
+                for s in spans:
+                    try:
+                        fields = s.split('++')
+                        toks = fields[1]
+                        type = fields[-1]
+                    except:
+                        print spans, line
+                        print fields
+                        sys.exit(1)
+                    if toks not in span_to_cate:
+                        span_to_cate[toks] = defaultdict(int)
+                    span_to_cate[toks][type] += 1
+
+    mle_map = {}
+    for toks in span_to_cate:
+        sorted_types = sorted(span_to_cate[toks].items(), key=lambda x:-x[1])
+        mle_map[toks] = sorted_types[0][0]
+        #print toks, '##', sorted_types[0][0]
+    return mle_map
 
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser()
@@ -542,8 +647,10 @@ if __name__ == '__main__':
     argparser.add_argument("--stop", type=str, help="stop words file", required=False)
     argparser.add_argument("--lemma", type=str, help="lemma file", required=False)
     argparser.add_argument("--data_dir", type=str, help="the data directory for dumped AMR graph objects, alignment and tokenized sentences")
+    argparser.add_argument("--map_file", type=str, help="map file from training")
     argparser.add_argument("--run_dir", type=str, help="the output directory for saving the constructed forest")
     argparser.add_argument("--use_lemma", action="store_true", help="if use lemmatized tokens")
+    argparser.add_argument("--parallel", action="store_true", help="if to linearize parallel sequences")
     argparser.add_argument("--use_stats", action="store_true", help="if use a built-up statistics")
     argparser.add_argument("--stats_dir", type=str, help="the statistics directory")
     argparser.add_argument("--min_prd_freq", type=int, default=50, help="threshold for filtering predicates")
@@ -552,3 +659,4 @@ if __name__ == '__main__':
 
     args = argparser.parse_args()
     linearize_amr(args)
+    #loadMap('./run_dir/mapseq_noindex')

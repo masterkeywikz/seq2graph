@@ -2,7 +2,7 @@
 import re, sys, os
 import cPickle
 from identify_entity import entities_inline
-def identify_entities(tok_file, ner_file, entity_set):
+def identify_entities(tok_file, ner_file, mle_map):
     all_entities = []
     with open(tok_file, 'r') as tok_f:
         with open(ner_file, 'r') as ner_f:
@@ -10,7 +10,6 @@ def identify_entities(tok_file, ner_file, entity_set):
                 sent_entities = []
                 ner_line = ner_f.readline()
                 tok_line = tok_line.strip()
-                #print 'sentence %d:' % (i+1)
                 if tok_line:
                     aligned_toks = set()
 
@@ -18,8 +17,9 @@ def identify_entities(tok_file, ner_file, entity_set):
                     matched_entities = entities_inline(ner_line)
                     entities = {}
                     for (role, ent) in matched_entities:
+                        ent = ent.replace('_', ' ')
+                        ent = ent.lower()
                         entities[ent] = role
-                    #entities = set(entities_inline(ner_line))
 
                     length = len(toks)
                     for start in xrange(length):
@@ -34,7 +34,7 @@ def identify_entities(tok_file, ner_file, entity_set):
                             if end > length:
                                 continue
 
-                            curr_str = '_'.join(toks[start:end])
+                            curr_str = ' '.join(toks[start:end])
                             if curr_str in entities:
                                 curr_set = set(xrange(start, end))
                                 aligned_toks |= curr_set
@@ -42,11 +42,10 @@ def identify_entities(tok_file, ner_file, entity_set):
 
                                 #print '%d-%d : ' % (start, end), curr_str
 
-                            elif curr_str in entity_set:
+                            elif curr_str in mle_map:
                                 curr_set = set(xrange(start, end))
                                 aligned_toks |= curr_set
                                 sent_entities.append((start, end, None))
-                                #print '%d-%d : ' % (start, end), curr_str
                 all_entities.append(sent_entities)
     return all_entities
 

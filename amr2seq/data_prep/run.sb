@@ -2,4 +2,5 @@
 #SBATCH --time=1:00:00 --output=out.txt --error=err.txt
 #SBATCH --mem=20GB
 #SBATCH -c 1
-python ./categorize_amr.py --data_dir ../../train --use_lemma --run_dir run_dir --stats_dir stats --use_stats
+python ./categorize_amr.py --data_dir ../../dev --use_lemma --run_dir run_dir --stats_dir stats --use_stats --map_file ./run_dir/mapseq_noindex
+#python ./categorize_amr.py --data_dir ../../train --use_lemma --run_dir run_dir --stats_dir stats --use_stats --parallel
