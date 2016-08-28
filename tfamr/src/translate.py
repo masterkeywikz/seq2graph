@@ -64,7 +64,7 @@ tf.app.flags.DEFINE_integer("en_vocab_size", 20000, "English vocabulary size.")
 tf.app.flags.DEFINE_integer("fr_vocab_size", 2000, "French vocabulary size.")
 tf.app.flags.DEFINE_string("data_dir", "../data", "Data directory")
 tf.app.flags.DEFINE_string("train_dir", "../models", "Training directory.")
-tf.app.flags.DEFINE_string("amrseq_version", "1.0", "amr sequence version")
+tf.app.flags.DEFINE_string("amrseq_version", "1.1", "amr sequence version")
 tf.app.flags.DEFINE_integer("max_train_data_size", 0,
                             "Limit on the size of training data (0: no limit).")
 tf.app.flags.DEFINE_integer("steps_per_checkpoint", 200,
@@ -156,7 +156,7 @@ def train():
     # Read data into buckets and compute their sizes.
     print ("Reading development and training data (limit: %d)."
            % FLAGS.max_train_data_size)
-    dev_set = read_data(en_dev, fr_dev)
+    #dev_set = read_data(en_dev, fr_dev)
     train_set = read_data(en_train, fr_train, FLAGS.max_train_data_size)
     train_bucket_sizes = [len(train_set[b]) for b in xrange(len(_buckets))]
     train_total_size = float(sum(train_bucket_sizes))
@@ -205,6 +205,7 @@ def train():
         model.saver.save(sess, checkpoint_path, global_step=model.global_step)
         step_time, loss = 0.0, 0.0
         # Run evals on development set and print their perplexity.
+        '''
         for bucket_id in xrange(len(_buckets)):
           encoder_inputs, decoder_inputs, target_weights = model.get_batch(
               dev_set, bucket_id)
@@ -213,6 +214,7 @@ def train():
           eval_ppx = math.exp(eval_loss) if eval_loss < 300 else float('inf')
           print("  eval: bucket %d perplexity %.2f" % (bucket_id, eval_ppx))
         sys.stdout.flush()
+        '''
 
 
 def train_early_stop():
