@@ -57,13 +57,13 @@ def mergeSpans(index_to_spans):
         curr_start = None
         curr_end = None
 
-        for (idx, (start, end)) in enumerate(span_list):
+        for (idx, (start, end, _)) in enumerate(span_list):
             if curr_end is not None:
                 #assert start >= curr_end, span_list
                 if start < curr_end:
                     continue
                 if start > curr_end: #There is a gap in between
-                    new_span_list.append((curr_start, curr_end))
+                    new_span_list.append((curr_start, curr_end, None))
                     curr_start = start
                     curr_end = end
                 else: #They equal, so update the end
@@ -74,7 +74,7 @@ def mergeSpans(index_to_spans):
                 curr_end = end
 
             if idx + 1 == len(span_list): #Have reached the last position
-                new_span_list.append((curr_start, curr_end))
+                new_span_list.append((curr_start, curr_end, None))
         new_index_to_spans[index] = new_span_list
     return new_index_to_spans
 
@@ -100,7 +100,7 @@ def extractNodeMapping(alignments, amr_graph):
 
         (index_type, index) = amr_graph.get_concept_relation(curr_frag)
         if index_type == 'c':
-            node_to_span[index].append((span_start, span_end))
+            node_to_span[index].append((span_start, span_end, None))
             curr_node = amr_graph.nodes[index]
 
             #Extract ops for entities
@@ -113,7 +113,7 @@ def extractNodeMapping(alignments, amr_graph):
                 role_toks.append((span_start, curr_node.c_edge))
 
         else:
-            edge_to_span[index].append((span_start, span_end))
+            edge_to_span[index].append((span_start, span_end, None))
     new_node_to_span = mergeSpans(node_to_span)
     new_edge_to_span = mergeSpans(edge_to_span)
 
@@ -350,7 +350,7 @@ def categorizeParallelSequences(amr, tok_seq, all_alignments, pred_freq_thre=50,
             end_index = end_index_map[tok_index]
             assert (tok_index, end_index) in cate_span_map
 
-            node_index, aligned_label = cate_span_map[(tok_index, end_index)]
+            node_index, aligned_label, wiki_label = cate_span_map[(tok_index, end_index)]
 
             if node_index not in nodeindex_to_tokindex:
                 nodeindex_to_tokindex[node_index] = defaultdict(int)
@@ -363,7 +363,8 @@ def categorizeParallelSequences(amr, tok_seq, all_alignments, pred_freq_thre=50,
             cate_tok_seq.append(indexed_aligned_label)
 
             #align_str = '%d-%d:%s:%d:%s:%s' % (tok_index, end_index, ' '.join(tok_seq[tok_index:end_index]), node_index, amr.nodes[node_index].node_str(), indexed_aligned_label)
-            align_str = '%d-%d++%s++%d++%s++%s' % (tok_index, end_index, ' '.join(tok_seq[tok_index:end_index]), node_index, amr.nodes[node_index].node_str(), aligned_label)
+
+            align_str = '%d-%d++%s++%s++%s++%s' % (tok_index, end_index, ' '.join(tok_seq[tok_index:end_index]), wiki_label if wiki_label is not None else 'NONE', amr.nodes[node_index].node_str(), aligned_label)
             map_seq.append(align_str)
 
     seq = [nodeindex_to_tokindex[node_index] if node_index in nodeindex_to_tokindex else label for (label, node_index) in seq]
@@ -380,14 +381,14 @@ def categorizedSpans(all_alignments, node_to_label):
     for (node_index, aligned_spans) in all_alignments:
         if node_index in node_to_label:
             aligned_label = node_to_label[node_index]
-            for (span_start, span_end) in aligned_spans:
+            for (span_start, span_end, wiki_label) in aligned_spans:
                 span_set = set(xrange(span_start, span_end))
                 if len(span_set & visited) != 0:
                     continue
 
                 visited |= span_set
 
-                span_map[(span_start, span_end)] = (node_index, aligned_label)
+                span_map[(span_start, span_end)] = (node_index, aligned_label, wiki_label)
                 end_index_map[span_start] = span_end
 
     return span_map, end_index_map, visited
@@ -431,7 +432,7 @@ def linearize_amr(args):
 
         amr_seq_file = os.path.join(args.run_dir, 'amrseq')
         tok_seq_file = os.path.join(args.run_dir, 'tokseq')
-        map_seq_file = os.path.join(args.run_dir, 'mapseq_noindex')
+        map_seq_file = os.path.join(args.run_dir, 'train_map')
 
         amrseq_wf = open(amr_seq_file, 'w')
         tokseq_wf = open(tok_seq_file, 'w')
@@ -473,7 +474,7 @@ def linearize_amr(args):
             all_alignments = defaultdict(list)
 
             ####Extract entities mapping#####
-            for (frag, frag_label) in amr.extract_entities():
+            for (frag, wiki_label) in amr.extract_entities():
                 if len(opt_toks) == 0:
                     logger.writeln("No alignment for the entity found")
 
@@ -482,6 +483,7 @@ def linearize_amr(args):
 
                 entity_mention_toks = root_node.namedEntityMention()
                 print 'fragment entity mention: %s' % ' '.join(entity_mention_toks)
+                print 'wiki label: %s' % wiki_label
 
                 total_num += 1.0
                 if entity_spans:
@@ -491,7 +493,7 @@ def linearize_amr(args):
                         logger.writeln('Single fragment')
                         for (frag_start, frag_end) in entity_spans:
                             logger.writeln(' '.join(tok_seq[frag_start:frag_end]))
-                            all_alignments[frag.root].append((frag_start, frag_end))
+                            all_alignments[frag.root].append((frag_start, frag_end, wiki_label))
                     else:
                         multiple_num += 1.0
                         logger.writeln('Multiple fragment')
@@ -500,7 +502,7 @@ def linearize_amr(args):
 
                         for (frag_start, frag_end) in entity_spans:
                             logger.writeln(' '.join(tok_seq[frag_start:frag_end]))
-                            all_alignments[frag.root].append((frag_start, frag_end))
+                            all_alignments[frag.root].append((frag_start, frag_end, wiki_label))
                 else:
                     empty_num += 1.0
                     _ = all_alignments[frag.root]
@@ -513,7 +515,7 @@ def linearize_amr(args):
                 if len(node_to_span[node_index]) > 1:
                     print 'Multiple found:'
                     print amr.nodes[node_index].node_str()
-                    for (span_start, span_end) in node_to_span[node_index]:
+                    for (span_start, span_end, _) in node_to_span[node_index]:
                         print ' '.join(tok_seq[span_start:span_end])
 
             ##Based on the alignment from node index to spans in the string
@@ -545,7 +547,9 @@ def linearize_amr(args):
         all_entities = identify_entities(tok_file, ner_file, mle_map)
 
         tokseq_result = os.path.join(args.data_dir, 'linearized_tokseq')
+        dev_map_file = os.path.join(args.data_dir, 'cate_map')
         tokseq_wf = open(tokseq_result, 'w')
+        dev_map_wf = open(dev_map_file, 'w')
 
         for (sent_index, (tok_seq, pos_seq, entities_in_sent)) in enumerate(zip(toks, poss, all_entities)):
             print 'snt: %d' % sent_index
@@ -562,7 +566,7 @@ def linearize_amr(args):
                     if entity_name in mle_map:
                         entity_typ = mle_map[entity_name]
                     else:
-                        entity_typ = 'NE_person'
+                        entity_typ = ('NE_person', "NONE", '-')
                     all_spans.append((start, end, entity_typ))
 
             #Single token
@@ -574,25 +578,32 @@ def linearize_amr(args):
                 aligned_set.add(index)
 
                 if curr_tok in mle_map:
-                    if mle_map[curr_tok].lower() == 'none':
-                        all_spans.append((index, index+1, curr_tok))
+                    (category, node_repr, wiki_label) = mle_map[curr_tok]
+                    if category.lower() == 'none':
+                        all_spans.append((index, index+1, (curr_tok, "NONE", "NONE")))
                     else:
                         all_spans.append((index, index+1, mle_map[curr_tok]))
                 else:
+                    if curr_tok[0] in '\"\'.':
+                        print 'weird token: %s, %s' % (curr_tok, curr_pos)
+                        continue
                     if curr_pos[0] == 'V':
-                        all_spans.append((index, index+1, '-VERB-'))
+                        all_spans.append((index, index+1, ('-VERB-', "NONE", "NONE")))
                     else:
-                        all_spans.append((index, index+1, '-SURF-'))
+                        all_spans.append((index, index+1, ('-SURF-', "NONE", "NONE")))
 
             all_spans = sorted(all_spans, key=lambda span: (span[0], span[1]))
-            linearized_tokseq = [l for (start, end, l) in all_spans]
-            linearized_tokseq = getIndexedForm(linearized_tokseq)
+            linearized_tokseq, map_repr_seq = getIndexedForm(all_spans)
+
             print >> tokseq_wf, ' '.join(linearized_tokseq)
+            print >> dev_map_wf, '##'.join(map_repr_seq)
+
         tokseq_wf.close()
+        dev_map_wf.close()
 
 #Given the parsed categorized sequence, using the original mapping
 #Rebuild the parsed AMR graphs
-def restoreAMR(args):
+def replaceResultCategories(args):
     logger.file = open(os.path.join(args.run_dir, 'logger'), 'w')
 
     tok_file = os.path.join(args.data_dir, 'token')
@@ -709,14 +720,18 @@ def isSpecial(symbol):
 def getIndexedForm(linearized_tokseq):
     new_seq = []
     indexer = {}
-    for tok in linearized_tokseq:
+    map_repr = []
+    #cate_to_node_repr = {}
+    for (start, end, (tok, node_repr, wiki_label)) in linearized_tokseq:
         if isSpecial(tok):
             new_tok = '%s-%d' % (tok, indexer.setdefault(tok, 0))
             indexer[tok] += 1
             new_seq.append(new_tok)
+            #cate_to_node_repr[new_tok] = (node_repr, wiki_label)
+            map_repr.append('%s++%s++%s' % (new_tok, node_repr, wiki_label))
         else:
             new_seq.append(tok)
-    return new_seq
+    return new_seq, map_repr
 
 #Given dev or test data, build the linearized token sequence
 #Based on entity mapping from training, NER tagger
@@ -725,7 +740,7 @@ def conceptID(args):
 
 #Build the entity map for concept identification
 #Choose either the most probable category or the most probable node repr
-def loadMap(map_file, field_no=-1):
+def loadMap(map_file):
     span_to_cate = {}
 
     #First load all possible mappings each span has
@@ -737,14 +752,16 @@ def loadMap(map_file, field_no=-1):
                     try:
                         fields = s.split('++')
                         toks = fields[1]
-                        type = fields[field_no]
+                        wiki_label = fields[2]
+                        node_repr = fields[3]
+                        category = fields[-1]
                     except:
                         print spans, line
                         print fields
                         sys.exit(1)
                     if toks not in span_to_cate:
                         span_to_cate[toks] = defaultdict(int)
-                    span_to_cate[toks][type] += 1
+                    span_to_cate[toks][(category, node_repr, wiki_label)] += 1
 
     mle_map = {}
     for toks in span_to_cate:
@@ -774,6 +791,6 @@ if __name__ == '__main__':
     argparser.add_argument("--index_unknown", action="store_true", help="if to index the unknown predicates or non predicate variables")
 
     args = argparser.parse_args()
-    restoreAMR(args)
+    replaceResultCategories(args)
     #linearize_amr(args)
     #loadMap('./run_dir/mapseq_noindex')
