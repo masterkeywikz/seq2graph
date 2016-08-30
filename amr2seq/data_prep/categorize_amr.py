@@ -3,6 +3,7 @@ import sys
 import time
 import pickle
 import os
+import re
 import cPickle
 from amr_graph import *
 from amr_utils import *
@@ -12,6 +13,7 @@ from re_utils import *
 from preprocess import *
 from collections import defaultdict
 from entities import identify_entities
+
 def build_bimap(tok2frags):
     frag2map = defaultdict(set)
     index2frags = defaultdict(set)
@@ -588,6 +590,116 @@ def linearize_amr(args):
             print >> tokseq_wf, ' '.join(linearized_tokseq)
         tokseq_wf.close()
 
+#Given the parsed categorized sequence, using the original mapping
+#Rebuild the parsed AMR graphs
+def restoreAMR(args):
+    logger.file = open(os.path.join(args.run_dir, 'logger'), 'w')
+
+    tok_file = os.path.join(args.data_dir, 'token')
+    lemma_file = os.path.join(args.data_dir, 'lemmatized_token')
+    pos_file = os.path.join(args.data_dir, 'pos')
+    parsed_file = os.path.join(args.data_dir, 'dev.parsed.1.1.amr')
+    ner_file = os.path.join(args.data_dir, 'ner')
+
+    toks = [line.strip().split() for line in open(tok_file, 'r')]
+    lemmas = [line.strip().split() for line in open(lemma_file, 'r')]
+    poss = [line.strip().split() for line in open(pos_file, 'r')]
+    parsed_seqs = [line.strip().split() for line in open(parsed_file, 'r')]
+
+    cate_mle_map = loadMap(args.map_file)  #From token to cate
+    node_mle_map = loadMap(args.map_file, 3)  #From token to node repr
+
+    all_entities = identify_entities(lemma_file, ner_file, cate_mle_map)
+
+    replaced_file = os.path.join(args.data_dir, 'replaced_parsed_linear')
+    replaced_wf = open(replaced_file, 'w')
+
+    for (sent_index, (tok_seq, lemma_seq, pos_seq, entities_in_sent)) in enumerate(zip(toks, lemmas, poss, all_entities)):
+        #print 'snt: %d' % sent_index
+        n_toks = len(tok_seq)
+        assert len(lemma_seq) == n_toks
+        aligned_set = set()
+
+        all_spans = []
+        #First align multi tokens
+        for (start, end, entity_typ) in entities_in_sent:
+            if end - start > 1:
+                new_aligned = set(xrange(start, end))
+                aligned_set |= new_aligned
+                #entity_name = ' '.join(tok_seq[start:end])
+                entity_name = ' '.join(lemma_seq[start:end])
+                if entity_name in cate_mle_map:
+                    entity_typ = cate_mle_map[entity_name]
+                else:
+                    entity_typ = 'NE_person'
+                all_spans.append((start, end, entity_typ))
+
+        #Single token
+        #for (index, curr_tok) in enumerate(tok_seq):
+        for (index, curr_tok) in enumerate(lemma_seq):
+            if index in aligned_set:
+                continue
+
+            curr_pos = pos_seq[index]
+            aligned_set.add(index)
+
+            if curr_tok in cate_mle_map:
+                if cate_mle_map[curr_tok].lower() == 'none':
+                    all_spans.append((index, index+1, curr_tok))
+                else:
+                    all_spans.append((index, index+1, cate_mle_map[curr_tok]))
+            else:
+                if curr_pos[0] == 'V':
+                    all_spans.append((index, index+1, '-VERB-'))
+                else:
+                    all_spans.append((index, index+1, '-SURF-'))
+
+        all_spans = sorted(all_spans, key=lambda span: (span[0], span[1]))
+        #print all_spans
+
+        linearized_tokseq = [l for (start, end, l) in all_spans]
+        spans = [(start, end) for (start, end, l) in all_spans]
+
+        linearized_tokseq = getIndexedForm(linearized_tokseq)
+
+        cate_to_node_repr = {}
+        #For each category in the linearized tok sequence, replace it with a subgraph repr: linearized amr subgraph
+        for (start, end), l in zip(spans, linearized_tokseq):
+            if isSpecial(l):
+                print start, end, l
+                l_nosuffix = re.sub('-[0-9]+', '', l)
+                #entity_name = ' '.join(tok_seq[start:end])
+                entity_name = ' '.join(lemma_seq[start:end])
+                if 'ENT' in l: #Is an entity
+                    assert l[:4] == 'ENT_', l
+                    node_repr = l_nosuffix[4:]
+                    cate_to_node_repr[l] = node_repr
+                elif 'NE' in l: #Is a named entity
+                    entity_root = l_nosuffix[3:]
+                    branch_form = buildLinearEnt(entity_root, tok_seq[start:end])  #Here rebuild the op representation of the named entity
+                    cate_to_node_repr[l] = branch_form
+                elif 'VERB' in l: #Predicate
+                    #assert entity_name in node_mle_map
+                    if entity_name in node_mle_map:
+                        cate_to_node_repr[l] = node_mle_map[entity_name]
+                    else:
+                        cate_to_node_repr[l] = '%s-01' % lemma_seq[start]
+                elif 'SURF' in l: #Surface form
+                    cate_to_node_repr[l] = entity_name
+                else: #is a const
+                    cate_to_node_repr[l] = entity_name
+
+        parsed_seq = parsed_seqs[sent_index+1]
+        parsed_seq = [cate_to_node_repr[l] if l in cate_to_node_repr else l for l in parsed_seq]
+
+        print >> replaced_wf, ' '.join(parsed_seq)
+    replaced_wf.close()
+
+def buildLinearEnt(entity_name, ops):
+    ops_strs = ['op%d( %s )op%d' % (index, s, index) for (index, s) in enumerate(ops, 1)]
+    ent_repr = '%s name( name %s )name' % (entity_name, ' '.join(ops_strs))
+    return ent_repr
+
 def isSpecial(symbol):
     for l in ['ENT', 'NE', 'VERB', 'SURF', 'CONST']:
         if l in symbol:
@@ -612,7 +724,8 @@ def conceptID(args):
     return
 
 #Build the entity map for concept identification
-def loadMap(map_file):
+#Choose either the most probable category or the most probable node repr
+def loadMap(map_file, field_no=-1):
     span_to_cate = {}
 
     #First load all possible mappings each span has
@@ -624,7 +737,7 @@ def loadMap(map_file):
                     try:
                         fields = s.split('++')
                         toks = fields[1]
-                        type = fields[-1]
+                        type = fields[field_no]
                     except:
                         print spans, line
                         print fields
@@ -637,8 +750,11 @@ def loadMap(map_file):
     for toks in span_to_cate:
         sorted_types = sorted(span_to_cate[toks].items(), key=lambda x:-x[1])
         mle_map[toks] = sorted_types[0][0]
-        #print toks, '##', sorted_types[0][0]
     return mle_map
+
+#For each sentence, rebuild the map from categorized form to graph side nodes
+def rebuildMap(args):
+    return
 
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser()
@@ -658,5 +774,6 @@ if __name__ == '__main__':
     argparser.add_argument("--index_unknown", action="store_true", help="if to index the unknown predicates or non predicate variables")
 
     args = argparser.parse_args()
-    linearize_amr(args)
+    restoreAMR(args)
+    #linearize_amr(args)
     #loadMap('./run_dir/mapseq_noindex')
