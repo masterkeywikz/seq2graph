@@ -293,7 +293,12 @@ class AMR_seq:
 
         new_seq = []
 
-        for tok in seq:
+        #Deal with redundant RET
+        skip = False
+        for (i, tok) in enumerate(seq):
+            if skip:
+                skip = False
+                continue
             if tok in repr_map:
                 #tok_nosuffix = re.sub('-[0-9]+', '', tok)
 
@@ -306,6 +311,30 @@ class AMR_seq:
                 else:
                     new_seq.append(node_repr)
             else:
+                if 'NE' in tok:
+                    tok = re.sub('-[0-9]+', '', tok)
+                    tok = tok[3:]
+                elif 'ENT' in tok:
+                    tok = re.sub('-[0-9]+', '', tok)
+                    tok = tok[4:]
+                elif 'RET' in tok or isSpecial(tok):  #Reentrancy, currently not supported
+                    prev_elabel = new_seq[-1]
+                    assert prev_elabel[-1] == '(', prev_elabel
+                    prev_elabel = prev_elabel[:-1]
+                    if i +1 < len(seq):
+                        next_elabel = seq[i+1]
+                        if next_elabel[0] == ')':
+                            next_elabel = next_elabel[1:]
+                            if prev_elabel == next_elabel:
+                                skip = True
+                                new_seq.pop()
+                                continue
+                    else:
+                        new_seq.pop()
+                        continue
+                        #print 'Weird here'
+                        #print seq
+
                 new_seq.append(tok)
 
         amrseq = ' '.join(new_seq)
@@ -544,6 +573,9 @@ def sequence2amr(toks, amrseqs, cate_to_repr, out_amr_file):
             print 'No ' + str(i) + ':' + ' '.join(toks[i])
             #print repr_map
             restored_amr = amr_seq.restore_amr(toks[i], s, repr_map)
+            if 'NONE' in restored_amr.to_amr_string():
+                print s
+                print repr_map
             print >> outf, restored_amr.to_amr_string()
             print >> outf, ''
         outf.close()
