@@ -200,7 +200,7 @@ class AMR_seq:
 
         return [],var
 
-    def restore_amr(self, amrseq):
+    def restore_amr(self, tok_seq, amrseq, repr_map):
         '''
         Given a linearized amr sequence, restore its amr graph
         Deal with non-matching parenthesis
@@ -275,8 +275,41 @@ class AMR_seq:
                     var_set.add(currval)
                     return currval
 
+        def buildLinearEnt(entity_name, ops, wiki_label):
+            ops_strs = ['op%d( "%s" )op%d' % (index, s, index) for (index, s) in enumerate(ops, 1)]
+            new_op_strs = []
+            for tok in ops_strs:
+                if '"("' in tok or '")"' in tok:
+                    break
+                new_op_strs.append(tok)
+            wiki_str = 'wiki( "%s" )wiki' % wiki_label
+            ent_repr = '%s %s name( name %s )name' % (entity_name, wiki_str, ' '.join(new_op_strs))
+            #ent_repr = '%s %s name( name %s )name' % (entity_name, wiki_str, ' '.join(ops_strs))
+            return ent_repr
+
         amr = AMR()
+        #print amrseq.strip()
         seq = amrseq.strip().split()
+
+        new_seq = []
+
+        for tok in seq:
+            if tok in repr_map:
+                #tok_nosuffix = re.sub('-[0-9]+', '', tok)
+
+                start, end, node_repr, wiki_label = repr_map[tok]
+
+                if 'NE' in tok: #Is a named entity
+                    #print ' '.join(tok_seq[start:end])
+                    branch_form = buildLinearEnt(node_repr, tok_seq[start:end], wiki_label)  #Here rebuild the op representation of the named entity
+                    new_seq.append(branch_form)
+                else:
+                    new_seq.append(node_repr)
+            else:
+                new_seq.append(tok)
+
+        amrseq = ' '.join(new_seq)
+        seq = amrseq.split()
         triples = []
 
         stack = []
@@ -291,8 +324,8 @@ class AMR_seq:
             ("LPAR", '[^\s()]+\('),  #Start of an edge
             ("RPAR",'\)[^\s()]+'),  #End of an edge
             #("SURF", '-SURF-'),  #Surface form non predicate
-            #("VERB", '-VERB-\d+'), # predicate
-            ("CONST", '-CONST-'), # const
+            ("VERB", '-VERB-\d+'), # predicate
+            ("CONST", '"[^"]+"'), # const
             ("REENTRANCY", '-RET-'),  #Reentrancy
             ("ENTITY", 'ENT_([^\s()]+)'),  #Entity
             ("NER", 'NE_([^\s()]+)'), #Named entity
@@ -348,12 +381,12 @@ class AMR_seq:
                     stack.append((PNODE,nodelabel,nodeconcept))
                     state = 2
                 elif type == "CONST":
-                    if currpos + 1 < seq_length and parsed_seq[currpos+1][1] == "LPAR":
-                        nodelabel = register_var(token)
-                        nodeconcept = token
-                        stack.append((PNODE,nodelabel,nodeconcept))
-                    else:
-                        stack.append((PNODE,token.strip(),None))
+                    #if currpos + 1 < seq_length and parsed_seq[currpos+1][1] == "LPAR":
+                    #    nodelabel = register_var(token)
+                    #    nodeconcept = token
+                    #    stack.append((PNODE,nodelabel,nodeconcept))
+                    #else:
+                    stack.append((PNODE,token.strip(),None))
                     state = 2
                 elif type == "REENTRANCY":
                     if currpos + 1 < seq_length and parsed_seq[currpos+1][1] == "LPAR":
@@ -503,16 +536,23 @@ def amr2sequence(toks, amr_graphs, alignments, poss, out_seq_file, amr_stats):
             seq = ' '.join(amr_seq.linearize_amr(instance))
             print >> outf, seq
 
-def sequence2amr(toks, amrseqs, out_amr_file):
+def sequence2amr(toks, amrseqs, cate_to_repr, out_amr_file):
     amr_seq = AMR_seq()
     with open(out_amr_file, 'w') as outf:
         print 'Restoring AMR graphs ...'
-        for i,s in enumerate(amrseqs):
+        for i, (s, repr_map) in enumerate(zip(amrseqs, cate_to_repr)):
             print 'No ' + str(i) + ':' + ' '.join(toks[i])
-            restored_amr = amr_seq.restore_amr(s)
+            #print repr_map
+            restored_amr = amr_seq.restore_amr(toks[i], s, repr_map)
             print >> outf, restored_amr.to_amr_string()
             print >> outf, ''
         outf.close()
+
+def isSpecial(symbol):
+    for l in ['ENT', 'NE', 'VERB', 'SURF', 'CONST']:
+        if l in symbol:
+            return True
+    return False
 
 if __name__ == "__main__":
 
@@ -530,10 +570,31 @@ if __name__ == "__main__":
     sent_file = os.path.join(FLAGS.data_dir, 'sentence')
     tok_file = os.path.join(FLAGS.data_dir, 'token')
     pos_file = os.path.join(FLAGS.data_dir, 'pos')
+    map_file = os.path.join(FLAGS.data_dir, 'cate_map')
+    cate_to_repr = []   #Maintain a map for each sentence
 
     comment_list, amr_list = readAMR(amr_file)
     if FLAGS.seq2amr:
         amrseqs = [line.strip() for line in open(FLAGS.amrseq_file, 'r')]
+        for line in open(map_file):
+            curr_map = {}
+            if line.strip():
+                fields = line.strip().split('##')
+                for map_tok in fields:
+                    fs = map_tok.strip().split('++')
+                    try:
+                        assert len(fs) == 5, line
+                    except:
+                        print line
+                        print fields
+                        print curr_map
+                        print fs
+                        sys.exit(1)
+                    start = int(fs[1])
+                    end = int(fs[2])
+                    curr_map[fs[0]] = (start, end, fs[3], fs[4])
+            cate_to_repr.append(curr_map)
+        assert len(cate_to_repr) == len(amrseqs)
 
     sents = [line.strip().split() for line in open(sent_file, 'r')]
     toks = [line.strip().split() for line in open(tok_file, 'r')]
@@ -563,6 +624,6 @@ if __name__ == "__main__":
 
     if FLAGS.seq2amr:
         amr_result_file = os.path.join(FLAGS.data_dir, 'amr.%s' % FLAGS.version)
-        sequence2amr(toks, amrseqs, amr_result_file)
+        sequence2amr(toks, amrseqs, cate_to_repr, amr_result_file)
 
 
