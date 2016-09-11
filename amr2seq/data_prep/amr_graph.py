@@ -165,6 +165,16 @@ class AMRNode(object):
             return True
         return False
 
+    def getWiki(self): #For a named entity, get its wiki label
+        assert self.is_named_entity()
+        for edge_index in self.v_edges:
+            curr_edge = self.graph.edges[edge_index]
+            if curr_edge.label == 'wiki':
+                wiki_node = self.graph.nodes[curr_edge.tail]
+                return wiki_node.node_str()
+
+        return '-'
+
     #Assume it to be entity mention
     def namedEntityMention(self):
         assert self.is_named_entity()
@@ -687,10 +697,11 @@ class AMRGraph(object):
             #root_srcs = None
             if curr_node.is_named_entity():
                 frag = self.build_entity_fragment(curr_node)
-                entity_tag = str(curr_node)
-                assert len(entity_tag.split('/')) == 2, entity_tag
-                entity_tag = entity_tag.split('/')[1]
-                entity_frags.append((frag, entity_tag))
+                #entity_tag = str(curr_node)
+                #assert len(entity_tag.split('/')) == 2, entity_tag
+                #entity_tag = entity_tag.split('/')[1]
+                wiki_label = curr_node.getWiki()
+                entity_frags.append((frag, wiki_label))
 
             if len(curr_node.v_edges) > 0:
                 for edge_index in reversed(curr_node.v_edges):  #depth first search
