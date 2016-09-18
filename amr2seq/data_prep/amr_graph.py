@@ -153,14 +153,18 @@ class AMRNode(object):
     def node_label(self):
         return self.graph.edges[self.c_edge].label
 
+    def is_date_entity(self):
+        v_label_set = set([self.graph.edges[x].label for x in self.v_edges])
+        return 'date-entity' in v_label_set
+
     def is_named_entity(self): #Added for the new labeled data
         v_label_set = set([self.graph.edges[x].label for x in self.v_edges])
         if 'name' in v_label_set:
             try:
                 assert 'wiki' in v_label_set
             except:
-                print 'ill-formed entity found'
-                print str(self.graph)
+                #print 'ill-formed entity found'
+                #print str(self.graph)
                 return False
             return True
         return False
@@ -319,7 +323,18 @@ class AMRGraph(object):
     def setStats(self, stats):
         self.stats = stats
 
-    def get_symbol(self, node_index, pred_freq_thre, var_freq_thre):
+    def getFreq(self, node_index):
+        curr_node = self.nodes[node_index]
+        curr_var = curr_node.node_str()
+        if self.is_predicate(curr_node):
+            return self.stats.num_predicates[curr_var]
+
+        elif curr_var in self.stats.num_nonpredicate_vals:
+            return self.stats.num_nonpredicate_vals[curr_var]
+
+        return None
+
+    def get_symbol(self, node_index, verb_map, pred_freq_thre, var_freq_thre):
         curr_node = self.nodes[node_index]
         curr_var = curr_node.node_str()
         if self.is_named_entity(curr_node):
@@ -329,7 +344,14 @@ class AMRGraph(object):
             #ret_var = 'NE_%s-%d' % (entity_name, self.ne_index)
             #self.ne_index += 1
             return exclude_rels, ret_var, True
-        elif self.is_entity(curr_node):
+        elif self.is_date_entity(curr_node):
+            ret_var = 'DATE'
+            return date_relations, ret_var, True
+
+        #elif node_index in verb_map:
+        #    if
+
+        elif self.is_entity(curr_node) and (node_index not in verb_map):
             entity_name = curr_node.node_str()
             ret_var = 'ENT_%s' % entity_name
             #ret_var = 'ENT_%s-%d' % (entity_name, self.ent_index)
@@ -337,9 +359,17 @@ class AMRGraph(object):
             return [], ret_var, True
         elif self.is_predicate(curr_node):
             if self.stats.num_predicates[curr_var] >= pred_freq_thre:
+                if node_index in verb_map:
+                    ex_rels = self.findMatch(curr_node, verb_map[node_index])
+                    ret_var = curr_var + '_VERBAL'
+                    return ex_rels, ret_var, True
                 ret_var = curr_var
                 categorized = False
             else:
+                if node_index in verb_map:
+                    ex_rels = self.findMatch(curr_node, verb_map[node_index])
+                    ret_var = 'VERBAL'
+                    return ex_rels, ret_var, True
                 ret_var = VERB
                 #ret_var = VERB + ('%d' % self.verb_index)
                 #self.verb_index += 1
@@ -356,9 +386,17 @@ class AMRGraph(object):
 
         else:
             if self.stats.num_nonpredicate_vals[curr_var] >= var_freq_thre:
+                if node_index in verb_map:
+                    ex_rels = self.findMatch(curr_node, verb_map[node_index])
+                    ret_var = curr_var + '_VERBAL'
+                    return ex_rels, ret_var, True
                 ret_var = curr_var
                 categorized = False
             else:
+                if node_index in verb_map:
+                    ex_rels = self.findMatch(curr_node, verb_map[node_index])
+                    ret_var = 'SURF_VERBAL'
+                    return ex_rels, ret_var, True
                 ret_var = SURF
                 #ret_var = SURF + ('%d' % self.var_index)
                 #self.var_index += 1
@@ -485,6 +523,12 @@ class AMRGraph(object):
                 print str(self)
                 return False
             return True
+        return False
+
+    def is_date_entity(self, node):
+        if node.is_var_node():
+            var_concept = node.node_str()
+            return var_concept.strip() == 'date-entity'
         return False
 
     def is_entity(self, node):
@@ -681,6 +725,38 @@ class AMRGraph(object):
                         stack.append((child_index, curr_rel, depth+1, True))
         return sequence
 
+    def extract_dates(self):
+        date_frags = []
+        visited_nodes = set()
+        stack = [(self.root, None, 0, False)]
+
+        while stack:
+            curr_node_index, par_rel, depth, is_coref = stack.pop()
+
+            if is_coref:
+                continue
+
+            visited_nodes.add(curr_node_index)
+            curr_node = self.nodes[curr_node_index]
+            if curr_node.is_date_entity():
+                frag = self.build_entity_fragment(curr_node)
+                #entity_tag = str(curr_node)
+                #assert len(entity_tag.split('/')) == 2, entity_tag
+                #entity_tag = entity_tag.split('/')[1]
+                wiki_label = curr_node.getWiki()
+                entity_frags.append((frag, wiki_label))
+
+            if len(curr_node.v_edges) > 0:
+                for edge_index in reversed(curr_node.v_edges):  #depth first search
+                    curr_edge = self.edges[edge_index]
+                    curr_rel = curr_edge.label
+                    child_index = curr_edge.tail
+                    if not curr_edge.is_coref:
+                        stack.append((child_index, curr_rel, depth+1, False))
+                    else:
+                        stack.append((child_index, curr_rel, depth+1, True))
+        return entity_frags
+
     def extract_entities(self):
         entity_frags = []
         visited_nodes = set()
@@ -714,7 +790,54 @@ class AMRGraph(object):
                         stack.append((child_index, curr_rel, depth+1, True))
         return entity_frags
 
-    def extract_all_entities(self):
+    def findMatch(self, node, subgraph):
+        root_label = node.node_str()
+        assert root_label in subgraph
+        tuple_set = set([(self.edges[edge_index].label, self.nodes[self.edges[edge_index].tail].node_str()) for edge_index in node.v_edges])
+        ex_rels = []
+
+        for (rel, tail_concept) in subgraph[root_label].items():
+            if (rel, tail_concept) in tuple_set:
+                ex_rels.append(rel)
+            else:
+                return []
+
+        return sorted(ex_rels)
+
+    def matchSubgraph(self, subgraph):
+
+        visited_nodes = set()
+        stack = [(self.root, None, False)]
+
+        matched_frags = []
+
+        while stack:
+            curr_node_index, par_rel, is_coref = stack.pop()
+
+            if is_coref:
+                continue
+
+            visited_nodes.add(curr_node_index)
+            curr_node = self.nodes[curr_node_index]
+
+            if curr_node.node_str() in subgraph:
+                ex_rels = self.findMatch(curr_node, subgraph)
+
+                if ex_rels:
+                    matched_frags.append((curr_node_index, ex_rels))
+
+            if len(curr_node.v_edges) > 0:
+                for edge_index in reversed(curr_node.v_edges):  #depth first search
+                    curr_edge = self.edges[edge_index]
+                    curr_rel = curr_edge.label
+                    child_index = curr_edge.tail
+                    if not curr_edge.is_coref:
+                        stack.append((child_index, curr_rel, False))
+                    else:
+                        stack.append((child_index, curr_rel, True))
+        return matched_frags
+
+    def extract_all_dates(self):
         entity_frags = []
         root2entityfrag = {}
         root2entitynames = {}
@@ -730,32 +853,12 @@ class AMRGraph(object):
 
             visited_nodes.add(curr_node_index)
             curr_node = self.nodes[curr_node_index]
-            if curr_node.is_entity(): #entities with :name structure
-                #frag = self.build_entity_fragment(curr_node)
-                frag = self.build_all_entity_fragments(curr_node, 'named')
 
-                entity_frags.append(frag)
-                root2entityfrag[curr_node_index] = frag
-
-                entity_name = str(curr_node)
-                entity_name = entity_name.split('/')[1].strip()
-                root2entitynames[curr_node_index] = 'ENT_%s' % entity_name
-
-            elif curr_node.is_date_entity():
-                frag = self.build_all_entity_fragments(curr_node, 'date')
+            if curr_node.is_date_entity():
+                frag = self.build_date_fragments(curr_node)
 
                 if frag:
                     entity_frags.append(frag)
-                    root2entityfrag[curr_node_index] = frag
-                    root2entitynames[curr_node_index] = 'ENT_date'
-
-            else:
-                root_str = curr_node.entity_name()
-                if root_str:  #One of the entity types
-                    frag = self.build_all_entity_fragments(curr_node, 'other')
-                    entity_frags.append(frag)
-                    root2entityfrag[curr_node_index] = frag
-                    root2entitynames[curr_node_index] = 'ENT_%s' % root_str
 
             if len(curr_node.v_edges) > 0:
                 for edge_index in reversed(curr_node.v_edges):  #depth first search
@@ -766,7 +869,7 @@ class AMRGraph(object):
                         stack.append((child_index, curr_rel, depth+1, False))
                     else:
                         stack.append((child_index, curr_rel, depth+1, True))
-        return (entity_frags, root2entityfrag, root2entitynames)
+        return entity_frags
 
     #Try breadth-first search to find unaligned edges
     #For all edges coming out of the same node, add additional processing for args
@@ -930,11 +1033,11 @@ class AMRGraph(object):
 
         return (aligned_fragments, unaligned_fragments)
 
-    def build_all_entity_fragments(self, node, type):
+    def build_date_fragments(self, node):
         n_nodes = len(self.nodes)
         n_edges = len(self.edges)
 
-        date_relations = set(['time', 'year', 'month', 'day', 'weekday', 'century', 'era', 'decade', 'dayperiod', 'season'])
+        #date_relations = set(['time', 'year', 'month', 'day', 'weekday', 'century', 'era', 'decade', 'dayperiod', 'season', 'timezone'])
 
         frag = AMRFragment(n_edges, n_nodes, self)
 
@@ -951,56 +1054,19 @@ class AMRGraph(object):
 
         for curr_edge_index in curr_node.v_edges:
             curr_edge = self.edges[curr_edge_index]
-            if type == 'named':
-                if curr_edge.label == 'wiki':
-                    frag.set_edge(curr_edge_index)
-                    tail_node_index = curr_edge.tail
-                    frag.set_node(tail_node_index)
-                    tail_node = self.nodes[tail_node_index]
-                    frag.set_edge(tail_node.c_edge)
-                    assert len(tail_node.v_edges) == 0 and len(tail_node.p_edges) == 1
-
-                elif curr_edge.label == 'name':
-                    frag.set_edge(curr_edge_index)
-                    tail_node_index = curr_edge.tail
-                    frag.set_node(tail_node_index)
-                    tail_node = self.nodes[tail_node_index]
-                    frag.set_edge(tail_node.c_edge)
-
-                    for grand_edge_index in tail_node.v_edges:
-                        curr_edge = self.edges[grand_edge_index]
-                        if 'op' not in curr_edge.label:
-                            continue
-
-                        frag.set_edge(grand_edge_index)
-                        tail_node_index = curr_edge.tail
-                        frag.set_node(tail_node_index)
-                        curr_tail_node = self.nodes[tail_node_index]
-                        #opt_srcs += extract_patterns(str(curr_tail_node), '~e\.[0-9]+(,[0-9]+)*')
-                        frag.set_edge(curr_tail_node.c_edge)
-                        assert len(curr_tail_node.v_edges) == 0 and len(curr_tail_node.p_edges) == 1
-            elif type == 'date':
-                if curr_edge.label in date_relations:
-                    frag.set_edge(curr_edge_index)
-                    tail_node_index = curr_edge.tail
-                    frag.set_node(tail_node_index)
-                    tail_node = self.nodes[tail_node_index]
-                    frag.set_edge(tail_node.c_edge)
-                    if len(tail_node.v_edges) != 0:  #There can be modifiers, leave this situation alone
-                        return None
-            elif type == 'other':
-                if curr_edge.label == 'value':
-                    frag.set_edge(curr_edge_index)
-                    tail_node_index = curr_edge.tail
-                    frag.set_node(tail_node_index)
-                    tail_node = self.nodes[tail_node_index]
-                    frag.set_edge(tail_node.c_edge)
+            if curr_edge.label in date_relations:
+                frag.set_edge(curr_edge_index)
+                tail_node_index = curr_edge.tail
+                frag.set_node(tail_node_index)
+                tail_node = self.nodes[tail_node_index]
+                frag.set_edge(tail_node.c_edge)
+                if len(tail_node.v_edges) != 0:  #There can be modifiers, leave this situation alone
+                    return None
 
         frag.build_ext_list()
         frag.build_ext_set()
         return frag
 
-    #Given the root of an entity, build a fragment for the entity
     def build_entity_fragment(self, node):
         n_nodes = len(self.nodes)
         n_edges = len(self.edges)

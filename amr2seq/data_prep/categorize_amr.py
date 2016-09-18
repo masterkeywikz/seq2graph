@@ -13,6 +13,7 @@ from re_utils import *
 from preprocess import *
 from collections import defaultdict
 from entities import identify_entities
+from constants import *
 
 def build_bimap(tok2frags):
     frag2map = defaultdict(set)
@@ -77,6 +78,51 @@ def mergeSpans(index_to_spans):
                 new_span_list.append((curr_start, curr_end, None))
         new_index_to_spans[index] = new_span_list
     return new_index_to_spans
+
+def getDateAttr(frag):
+    date_relations = set(['time', 'year', 'month', 'day', 'weekday', 'century', 'era', 'decade', 'dayperiod', 'season', 'timezone'])
+    root_index = frag.root
+    amr_graph = frag.graph
+    root_node = amr_graph.nodes[root_index]
+
+    attr_indices = set()
+    for edge_index in root_node.v_edges:
+        curr_edge = amr_graph.edges[edge_index]
+        if curr_edge.label in date_relations:
+            attr_indices.add(curr_edge.tail)
+    return attr_indices
+
+#Given an alignment and the fragment, output the covered span
+def getSpanSide(toks, alignments, frag, unaligned_toks):
+    aligned_set = set()
+    amr_graph = frag.graph
+
+    covered_set = set()
+    all_date_attrs = getDateAttr(frag)
+
+    for curr_align in reversed(alignments):
+        curr_tok = curr_align.split('-')[0]
+        curr_frag = curr_align.split('-')[1]
+
+        span_start = int(curr_tok)
+        span_end = span_start + 1
+
+        aligned_set.add(span_start)
+
+        (index_type, index) = amr_graph.get_concept_relation(curr_frag)
+        if index_type == 'c':
+            if frag.nodes[index] == 1: #Covered current
+                covered_set.add(span_start)
+                if index in all_date_attrs:
+                    all_date_attrs.remove(index)
+
+        else: #An edge covered span
+            if frag.edges[index] == 1:
+                covered_set.add(span_start)
+
+    covered_toks = sorted(list(covered_set))
+    non_covered = [amr_graph.nodes[index].node_str() for index in all_date_attrs]
+    return covered_toks, non_covered
 
 def extractNodeMapping(alignments, amr_graph):
     aligned_set = set()
@@ -272,7 +318,7 @@ class AMR_stats(object):
         return s
 
 #Traverse AMR from top down, also categorize the sequence in case of alignment existed
-def categorizeParallelSequences(amr, tok_seq, all_alignments, pred_freq_thre=50, var_freq_thre=50):
+def categorizeParallelSequences(amr, tok_seq, all_alignments, unaligned, verb_map, pred_freq_thre=50, var_freq_thre=50):
 
     old_depth = -1
     depth = -1
@@ -317,7 +363,16 @@ def categorizeParallelSequences(amr, tok_seq, all_alignments, pred_freq_thre=50,
         visited.add(curr_node_index)
         seq.append((rel+LBR, None))
 
-        exclude_rels, cur_symbol, categorized = amr.get_symbol(curr_node_index, pred_freq_thre, var_freq_thre)
+        if curr_node_index in all_alignments:
+            exclude_rels, cur_symbol, categorized = amr.get_symbol(curr_node_index, verb_map, pred_freq_thre, var_freq_thre)
+        else:
+            freq = amr.getFreq(curr_node_index)
+            if freq and freq < 50:
+                print ' '.join(tok_seq)
+                print 'unseen: %s' % curr_var
+
+
+            exclude_rels, cur_symbol, categorized = [], curr_var, False
 
         if categorized:
             node_to_label[curr_node_index] = cur_symbol
@@ -329,6 +384,13 @@ def categorizeParallelSequences(amr, tok_seq, all_alignments, pred_freq_thre=50,
             curr_edge = amr.edges[edge_index]
             child_index = curr_edge.tail
             if curr_edge.label in exclude_rels:
+                visited.add(child_index)
+                if 'VERBAL' in cur_symbol: #Might have other relations
+                    tail_node = amr.nodes[child_index]
+                    for next_edge_index in reversed(tail_node.v_edges):
+                        next_edge = amr.edges[next_edge_index]
+                        next_child_index = next_edge.tail
+                        stack.append((next_child_index, next_edge.label, curr_var, depth+1))
                 continue
             stack.append((child_index, curr_edge.label, curr_var, depth+1))
 
@@ -418,7 +480,7 @@ def linearize_amr(args):
 
     if args.use_stats:
         amr_statistics.loadFromDir(args.stats_dir)
-        print amr_statistics
+        #print amr_statistics
     else:
         os.system('mkdir -p %s' % args.stats_dir)
         amr_statistics.collect_stats(amr_graphs)
@@ -473,7 +535,7 @@ def linearize_amr(args):
             all_frags = []
             all_alignments = defaultdict(list)
 
-            ####Extract entities mapping#####
+            ####Extract named entities#####
             for (frag, wiki_label) in amr.extract_entities():
                 if len(opt_toks) == 0:
                     logger.writeln("No alignment for the entity found")
@@ -482,8 +544,6 @@ def linearize_amr(args):
                 root_node = amr.nodes[frag.root]
 
                 entity_mention_toks = root_node.namedEntityMention()
-                print 'fragment entity mention: %s' % ' '.join(entity_mention_toks)
-                print 'wiki label: %s' % wiki_label
 
                 total_num += 1.0
                 if entity_spans:
@@ -494,6 +554,7 @@ def linearize_amr(args):
                         for (frag_start, frag_end) in entity_spans:
                             logger.writeln(' '.join(tok_seq[frag_start:frag_end]))
                             all_alignments[frag.root].append((frag_start, frag_end, wiki_label))
+                            temp_aligned |= set(xrange(frag_start, frag_end))
                     else:
                         multiple_num += 1.0
                         logger.writeln('Multiple fragment')
@@ -503,26 +564,74 @@ def linearize_amr(args):
                         for (frag_start, frag_end) in entity_spans:
                             logger.writeln(' '.join(tok_seq[frag_start:frag_end]))
                             all_alignments[frag.root].append((frag_start, frag_end, wiki_label))
+                            temp_aligned |= set(xrange(frag_start, frag_end))
                 else:
                     empty_num += 1.0
-                    _ = all_alignments[frag.root]
+                    #_ = all_alignments[frag.root]
 
+            ####Process date entities
+            date_entity_frags = amr.extract_all_dates()
+            #print ' '.join(tok_seq)
+            for frag in date_entity_frags:
+                #print 'date:', str(frag)
+                covered_toks, non_covered = getSpanSide(tok_seq, alignment_seq, frag, temp_unaligned)
+                covered_set = set(covered_toks)
+
+                all_spans = getContinuousSpans(covered_toks, temp_unaligned, covered_set)
+                if all_spans:
+                    temp_spans = []
+                    for span_start, span_end in all_spans:
+                        if span_start > 0 and (span_start-1) in temp_unaligned:
+                            if tok_seq[span_start-1] in str(frag) and tok_seq[0] in '0123456789':
+                                #print ' '.join(tok_seq[span_start-1, span_end])
+                                temp_spans.append((span_start-1, span_end))
+                            else:
+                                temp_spans.append((span_start, span_end))
+                        else:
+                            temp_spans.append((span_start, span_end))
+                    all_spans = temp_spans
+                    all_spans = removeDateRedundant(all_spans)
+                    for span_start, span_end in all_spans:
+                        all_alignments[frag.root].append((span_start, span_end, None))
+                        temp_aligned |= set(xrange(span_start, span_end))
+                else:
+                    for index in temp_unaligned:
+                        curr_tok = tok_seq[index]
+                        found = False
+                        for un_tok in non_covered:
+                            if curr_tok[0] in '0123456789' and curr_tok in un_tok:
+                                print 'recovered: %s' % curr_tok
+                                found = True
+                                break
+                        if found:
+                            all_alignments[frag.root].append((index, index+1, None))
+                            temp_aligned.add(index)
+
+            #Verbalization list
+            verb_map = {}
+            for (index, curr_tok) in enumerate(tok_seq):
+                if curr_tok in VERB_LIST:
+
+                    for subgraph in VERB_LIST[curr_tok]:
+
+                        matched_frags = amr.matchSubgraph(subgraph)
+
+                        for (node_index, ex_rels) in matched_frags:
+                            all_alignments[node_index].append((index, index+1, None))
+                            verb_map[node_index] = subgraph
+
+            #####Load verbalization list #####
             for node_index in node_to_span:
                 if node_index in all_alignments:
                     continue
 
                 all_alignments[node_index] = node_to_span[node_index]
-                if len(node_to_span[node_index]) > 1:
-                    print 'Multiple found:'
-                    print amr.nodes[node_index].node_str()
-                    for (span_start, span_end, _) in node_to_span[node_index]:
-                        print ' '.join(tok_seq[span_start:span_end])
 
             ##Based on the alignment from node index to spans in the string
 
             assert len(tok_seq) == len(pos_seq)
 
-            amr_seq, cate_tok_seq, map_seq = categorizeParallelSequences(amr, tok_seq, all_alignments, args.min_prd_freq, args.min_var_freq)
+            amr_seq, cate_tok_seq, map_seq = categorizeParallelSequences(amr, tok_seq, all_alignments, temp_unaligned, verb_map, args.min_prd_freq, args.min_var_freq)
             print >> amrseq_wf, ' '.join(amr_seq)
             print >> tokseq_wf, ' '.join(cate_tok_seq)
             print >> mapseq_wf, '##'.join(map_seq)  #To separate single space
@@ -531,9 +640,9 @@ def linearize_amr(args):
         tokseq_wf.close()
         mapseq_wf.close()
 
-        print "one to one alignment: %lf" % (singleton_num/total_num)
-        print "one to multiple alignment: %lf" % (multiple_num/total_num)
-        print "one to empty alignment: %lf" % (empty_num/total_num)
+        #print "one to one alignment: %lf" % (singleton_num/total_num)
+        #print "one to multiple alignment: %lf" % (multiple_num/total_num)
+        #print "one to empty alignment: %lf" % (empty_num/total_num)
     else: #Only build the linearized token sequence
 
         mle_map = loadMap(args.map_file)

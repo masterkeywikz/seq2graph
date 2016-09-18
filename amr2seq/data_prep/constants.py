@@ -14,55 +14,13 @@ VERB='-VERB-'
 END='-END-'
 UNK='UNK' # unknown words
 
+date_relations = set(['time', 'year', 'month', 'day', 'weekday', 'century', 'era', 'decade', 'dayperiod', 'season', 'timezone'])
+
 WORD2VEC_EMBEDDING_PATH='/home/j/llc/cwang24/Tools/word2vec/GoogleNews-vectors-negative300.bin'
 
-# DEFAULT_RULE_FILE = './rules/dep2amrLabelRules'
-
-# def _load_rules(rule_file):
-#     rf = open(rule_file,'r')
-#     d = {}
-#     for line in rf.readlines():
-#         if line.strip():
-#             dep_rel,amr_rel,_ = line.split()
-#             if dep_rel not in d: d[dep_rel] = amr_rel[1:]
-#         else:
-#             pass
-#     return d
-
-# __DEP_AMR_REL_TABLE = _load_rules(DEFAULT_RULE_FILE)
-# def get_fake_amr_relation_mapping(dep_rel):
-#     return __DEP_AMR_REL_TABLE[dep_rel]
-
-# DEFAULT_NOM_FILE = './resources/nombank-dict.1.0'
-
-# def _read_nom_list(nombank_dict_file):
-#     nomdict = open(nombank_dict_file,'r')
-#     nomlist = []
-#     token_re = re.compile('^\\(PBNOUN :ORTH \\"([^\s]+)\\" :ROLE-SETS')
-#     for line in nomdict.readlines():
-#         m = token_re.match(line.rstrip())
-#         if m:
-#             nomlist.append(m.group(1))
-#     return nomlist
-
-# NOMLIST = _read_nom_list(DEFAULT_NOM_FILE)
-
-# DEFAULT_BROWN_CLUSTER = './resources/wclusters-engiga'
-
-# def _load_brown_cluster(dir_path,cluster_num=1000):
-#     cluster_dict = defaultdict(str)
-#     for fn in listdir(dir_path):
-#         if re.match('^.*c(\d+).*$',fn).group(1) == str(cluster_num) and fn.endswith('.txt'):
-#             with open(dir_path+'/'+fn,'r') as f:
-#                 for line in f:
-#                     bitstring, tok, freq = line.split()
-#                     cluster_dict[tok]=bitstring
-
-#     return cluster_dict
-
-# BROWN_CLUSTER=_load_brown_cluster(DEFAULT_BROWN_CLUSTER)
-
 PATH_TO_VERB_LIST = '../resources/verbalization-list-v1.01.txt'
+all_relations = set()
+num_set = set()
 
 def _load_verb_list(path_to_file):
     verbdict = {}
@@ -77,17 +35,28 @@ def _load_verb_list(path_to_file):
                     #else: # have sub-structure
                     root = re.split('\s+', subgraph_str, 1)[0]
                     subgraph[root] = {}
+                    num_relations = 0
                     for match in re.finditer(':([^\s]+)\s*([^\s:]+)',subgraph_str):
                         relation = match.group(1)
+                        all_relations.add(relation)
                         concept = match.group(2)
                         subgraph[root][relation] = concept
+                        num_relations += 1
 
+                    #if num_relations == 2:
+                    #    print subgraph_str
+                    num_set.add(num_relations)
                     verbdict[lemma] = verbdict.get(lemma,[])
                     verbdict[lemma].append(subgraph)
 
     return verbdict
 
 VERB_LIST = _load_verb_list(PATH_TO_VERB_LIST)
+#for relation in all_relations:
+#    print relation
+#
+#for num in num_set:
+#    print num
 
 # PATH_TO_COUNTRY_LIST='./resources/country-list.csv'
 

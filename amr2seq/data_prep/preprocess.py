@@ -23,3 +23,8 @@ def removeRedundant(toks, entity_spans, op_toks):
     max_score = all_spans[0][0]
     remained_spans = [(start, end) for (sim_score, start, end) in all_spans if sim_score == max_score]
     return remained_spans
+
+def removeDateRedundant(date_spans):
+    max_span = max([end-start for (start, end) in date_spans])
+    remained_spans = [(start, end) for (start, end) in date_spans if end-start == max_span]
+    return remained_spans

@@ -38,6 +38,40 @@ def parse_indexes(toks):
         spans += [int(p) for p in tok.split(',')]
     return spans
 
+def getContinuousSpans(tok_indexes, unaligned, covered):
+    all_spans = []
+    if len(tok_indexes) == 0:
+        return []
+    if len(tok_indexes) == 1:
+        return [(tok_indexes[0], tok_indexes[0]+1)]
+
+    start = tok_indexes[0]
+    end = tok_indexes[-1] + 1
+
+    tmp_start = None
+    tmp_end = None
+    for i in xrange(start, end):
+        if i in covered:
+            if tmp_start is None:
+                tmp_start = i
+        elif tmp_start is not None and i not in unaligned:
+            all_spans.append((tmp_start, i))
+            tmp_start = None
+
+    if tmp_start is not None:
+        all_spans.append((tmp_start, end))
+
+    if len(all_spans) > 1:
+        new_spans = []
+        for (start, end) in all_spans:
+            while (end-1) in unaligned:
+                end -= 1
+            assert start < end
+            new_spans.append((start, end))
+        all_spans = new_spans
+
+    return all_spans
+
 def all_aligned_spans(frag, opt_toks, role_toks, unaligned):
     tok_indexes = []
     covered = set()
@@ -59,33 +93,34 @@ def all_aligned_spans(frag, opt_toks, role_toks, unaligned):
         return (None, None)
 
     sorted_tok_indexes = sorted(tok_indexes)
-    all_spans = []
-    if len(sorted_tok_indexes) == 1:
-        return (None, [(tok_indexes[0], tok_indexes[0]+1)])
+    all_spans = getContinuousSpans(sorted_tok_indexes, unaligned, covered)
+    #all_spans = []
+    #if len(sorted_tok_indexes) == 1:
+    #    return (None, [(tok_indexes[0], tok_indexes[0]+1)])
 
-    start = sorted_tok_indexes[0]
-    end = sorted_tok_indexes[-1] + 1
+    #start = sorted_tok_indexes[0]
+    #end = sorted_tok_indexes[-1] + 1
 
-    tmp_start = None
-    tmp_end = None
-    for i in xrange(start, end):
-        if i in covered:
-            if tmp_start is None:
-                tmp_start = i
-        elif tmp_start is not None and i not in unaligned:
-            all_spans.append((tmp_start, i))
-            tmp_start = None
-    if tmp_start is not None:
-        all_spans.append((tmp_start, end))
+    #tmp_start = None
+    #tmp_end = None
+    #for i in xrange(start, end):
+    #    if i in covered:
+    #        if tmp_start is None:
+    #            tmp_start = i
+    #    elif tmp_start is not None and i not in unaligned:
+    #        all_spans.append((tmp_start, i))
+    #        tmp_start = None
+    #if tmp_start is not None:
+    #    all_spans.append((tmp_start, end))
 
-    if len(all_spans) > 1:
-        new_spans = []
-        for (start, end) in all_spans:
-            while (end-1) in unaligned:
-                end -= 1
-            assert start < end
-            new_spans.append((start, end))
-        all_spans = new_spans
+    #if len(all_spans) > 1:
+    #    new_spans = []
+    #    for (start, end) in all_spans:
+    #        while (end-1) in unaligned:
+    #            end -= 1
+    #        assert start < end
+    #        new_spans.append((start, end))
+    #    all_spans = new_spans
 
     return (sorted_tok_indexes, all_spans)
 
