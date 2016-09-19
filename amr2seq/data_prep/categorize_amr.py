@@ -14,6 +14,7 @@ from preprocess import *
 from collections import defaultdict
 from entities import identify_entities
 from constants import *
+from date_extraction import *
 
 def build_bimap(tok2frags):
     frag2map = defaultdict(set)
@@ -317,6 +318,18 @@ class AMR_stats(object):
 
         return s
 
+def similarTok(curr_var, tok):
+    if curr_var == tok:
+        return True
+    var_len = len(curr_var)
+    tok_len = len(tok)
+    if var_len > 3 and tok_len > 3 and tok[:4] == curr_var[:4]:
+        return True
+    if is_num(tok) and tok in curr_var:
+        return True
+    if is_num(curr_var) and curr_var in tok:
+        return True
+
 #Traverse AMR from top down, also categorize the sequence in case of alignment existed
 def categorizeParallelSequences(amr, tok_seq, all_alignments, unaligned, verb_map, pred_freq_thre=50, var_freq_thre=50):
 
@@ -367,12 +380,22 @@ def categorizeParallelSequences(amr, tok_seq, all_alignments, unaligned, verb_ma
             exclude_rels, cur_symbol, categorized = amr.get_symbol(curr_node_index, verb_map, pred_freq_thre, var_freq_thre)
         else:
             freq = amr.getFreq(curr_node_index)
-            if freq and freq < 50:
-                print ' '.join(tok_seq)
+            retrieved = False
+            if freq and freq < 100:
+                #print ' '.join(tok_seq)
+                #print 'unseen: %s' % curr_var
+                for index in unaligned:
+                    if similarTok(curr_var, tok_seq[index]):
+                        print 'retrieved: %s, %s' % (curr_var, tok_seq[index])
+                        all_alignments[curr_node_index].append((index, index+1, None))
+
+                        exclude_rels, cur_symbol, categorized = amr.get_symbol(curr_node_index, verb_map, pred_freq_thre, var_freq_thre)
+                        retrieved = True
+                        break
+
+            if not retrieved:
+                exclude_rels, cur_symbol, categorized = [], curr_var, False
                 print 'unseen: %s' % curr_var
-
-
-            exclude_rels, cur_symbol, categorized = [], curr_var, False
 
         if categorized:
             node_to_label[curr_node_index] = cur_symbol
@@ -420,7 +443,6 @@ def categorizeParallelSequences(amr, tok_seq, all_alignments, unaligned, verb_ma
             indexed_aligned_label = '%s-%d' % (aligned_label, label_to_index[aligned_label])
             nodeindex_to_tokindex[node_index] = indexed_aligned_label
             label_to_index[aligned_label] += 1
-
 
             cate_tok_seq.append(indexed_aligned_label)
 
@@ -567,13 +589,10 @@ def linearize_amr(args):
                             temp_aligned |= set(xrange(frag_start, frag_end))
                 else:
                     empty_num += 1.0
-                    #_ = all_alignments[frag.root]
 
             ####Process date entities
             date_entity_frags = amr.extract_all_dates()
-            #print ' '.join(tok_seq)
             for frag in date_entity_frags:
-                #print 'date:', str(frag)
                 covered_toks, non_covered = getSpanSide(tok_seq, alignment_seq, frag, temp_unaligned)
                 covered_set = set(covered_toks)
 
@@ -583,7 +602,6 @@ def linearize_amr(args):
                     for span_start, span_end in all_spans:
                         if span_start > 0 and (span_start-1) in temp_unaligned:
                             if tok_seq[span_start-1] in str(frag) and tok_seq[0] in '0123456789':
-                                #print ' '.join(tok_seq[span_start-1, span_end])
                                 temp_spans.append((span_start-1, span_end))
                             else:
                                 temp_spans.append((span_start, span_end))
@@ -594,6 +612,7 @@ def linearize_amr(args):
                     for span_start, span_end in all_spans:
                         all_alignments[frag.root].append((span_start, span_end, None))
                         temp_aligned |= set(xrange(span_start, span_end))
+                        print 'Dates: %s' % ' '.join(tok_seq[span_start:span_end])
                 else:
                     for index in temp_unaligned:
                         curr_tok = tok_seq[index]
@@ -606,6 +625,7 @@ def linearize_amr(args):
                         if found:
                             all_alignments[frag.root].append((index, index+1, None))
                             temp_aligned.add(index)
+                            print 'Date: %s' % tok_seq[index]
 
             #Verbalization list
             verb_map = {}
@@ -615,6 +635,8 @@ def linearize_amr(args):
                     for subgraph in VERB_LIST[curr_tok]:
 
                         matched_frags = amr.matchSubgraph(subgraph)
+                        if matched_frags:
+                            temp_aligned.add(index)
 
                         for (node_index, ex_rels) in matched_frags:
                             all_alignments[node_index].append((index, index+1, None))
@@ -628,6 +650,7 @@ def linearize_amr(args):
                 all_alignments[node_index] = node_to_span[node_index]
 
             ##Based on the alignment from node index to spans in the string
+            temp_unaligned = set(xrange(len(pos_seq))) - temp_aligned
 
             assert len(tok_seq) == len(pos_seq)
 
@@ -652,8 +675,10 @@ def linearize_amr(args):
             tok_file = os.path.join(args.data_dir, 'token')
 
         ner_file = os.path.join(args.data_dir, 'ner')
+        date_file = os.path.join(args.data_dir, 'date')
 
         all_entities = identify_entities(tok_file, ner_file, mle_map)
+        all_dates = dateMap(date_file)
 
         tokseq_result = os.path.join(args.data_dir, 'linearized_tokseq')
         dev_map_file = os.path.join(args.data_dir, 'cate_map')
@@ -666,6 +691,23 @@ def linearize_amr(args):
             aligned_set = set()
 
             all_spans = []
+            date_spans = all_dates[sent_index]
+            date_set = set()
+
+            #Align dates
+            for (start, end) in date_spans:
+                if end - start > 1:
+                    new_aligned = set(xrange(start, end))
+                    aligned_set |= new_aligned
+                    entity_name = ' '.join(tok_seq[start:end])
+                    if entity_name in mle_map:
+                        entity_typ = mle_map[entity_name]
+                    else:
+                        entity_typ = ('DATE', "date-entity", "NONE")
+                    all_spans.append((start, end, entity_typ))
+                else:
+                    date_set.add(start)
+
             #First align multi tokens
             for (start, end, entity_typ) in entities_in_sent:
                 if end - start > 1:
@@ -693,10 +735,18 @@ def linearize_amr(args):
                     else:
                         all_spans.append((index, index+1, mle_map[curr_tok]))
                 else:
+
                     if curr_tok[0] in '\"\'.':
                         print 'weird token: %s, %s' % (curr_tok, curr_pos)
                         continue
-                    if curr_pos[0] == 'V':
+                    if index in date_set:
+                        entity_typ = ('DATE', "date-entity", "NONE")
+                        all_spans.append((index, index+1, entity_typ))
+                    elif curr_tok in VERB_LIST:
+                        entity_typ = ('VERBAL', curr_tok, "NONE")
+                        all_spans.append((index, index+1, entity_typ))
+
+                    elif curr_pos[0] == 'V':
                         node_repr = '%s-01' % curr_tok
                         all_spans.append((index, index+1, ('-VERB-', node_repr, "NONE")))
                     else:
@@ -718,7 +768,7 @@ def buildLinearEnt(entity_name, ops):
     return ent_repr
 
 def isSpecial(symbol):
-    for l in ['ENT', 'NE', 'VERB', 'SURF', 'CONST']:
+    for l in ['ENT', 'NE', 'VERB', 'SURF', 'CONST', 'DATE', 'VERBAL']:
         if l in symbol:
             return True
     return False
@@ -743,6 +793,19 @@ def getIndexedForm(linearized_tokseq):
 #Based on entity mapping from training, NER tagger
 def conceptID(args):
     return
+
+def dateMap(dateFile):
+    dates_in_lines = []
+    for line in open(dateFile):
+        date_spans = []
+        if line.strip():
+            spans = line.strip().split()
+            for sp in spans:
+                start = int(sp.split('-')[0])
+                end = int(sp.split('-')[1])
+                date_spans.append((start, end))
+        dates_in_lines.append(date_spans)
+    return dates_in_lines
 
 #Build the entity map for concept identification
 #Choose either the most probable category or the most probable node repr
@@ -787,6 +850,7 @@ if __name__ == '__main__':
     argparser.add_argument("--lemma", type=str, help="lemma file", required=False)
     argparser.add_argument("--data_dir", type=str, help="the data directory for dumped AMR graph objects, alignment and tokenized sentences")
     argparser.add_argument("--map_file", type=str, help="map file from training")
+    argparser.add_argument("--date_file", type=str, help="all the date in each sentence")
     argparser.add_argument("--run_dir", type=str, help="the output directory for saving the constructed forest")
     argparser.add_argument("--use_lemma", action="store_true", help="if use lemmatized tokens")
     argparser.add_argument("--parallel", action="store_true", help="if to linearize parallel sequences")
