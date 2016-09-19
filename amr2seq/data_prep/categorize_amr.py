@@ -743,7 +743,8 @@ def linearize_amr(args):
                         entity_typ = ('DATE', "date-entity", "NONE")
                         all_spans.append((index, index+1, entity_typ))
                     elif curr_tok in VERB_LIST:
-                        entity_typ = ('VERBAL', curr_tok, "NONE")
+                        node_repr = VERB_LIST[curr_tok][0].keys()[0]
+                        entity_typ = ('VERBAL', node_repr, "NONE")
                         all_spans.append((index, index+1, entity_typ))
 
                     elif curr_pos[0] == 'V':
