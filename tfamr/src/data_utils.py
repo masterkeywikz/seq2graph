@@ -23,6 +23,7 @@ import os
 import re
 import tarfile
 
+
 from tensorflow.python.platform import gfile
 from six.moves import urllib
 
@@ -214,7 +215,7 @@ def sentence_to_token_ids(sentence, vocabulary,
   return [vocabulary.get(re.sub(_DIGIT_RE, "0", w), UNK_ID) for w in words]
 
 
-def data_to_token_ids(data_path, target_path, vocabulary_path,
+def data_to_token_ids(data_path, target_path, vocabulary_path, 
                       tokenizer=None, normalize_digits=False):
   """Tokenize data file and turn into token-ids using given vocabulary file.
 
@@ -265,6 +266,7 @@ def prepare_wmt_data(data_dir, en_vocabulary_size, amr_vocabulary_size, amrseq_v
   # Get wmt data to the specified directory.
   # train_path = get_wmt_enfr_train_set(data_dir)
   # dev_path = get_wmt_enfr_dev_set(data_dir)
+  data_dir = os.path.join(data_dir, amrseq_version)
   train_path = os.path.join(data_dir, 'train')
   dev_path = os.path.join(data_dir, 'dev')
 
@@ -272,20 +274,25 @@ def prepare_wmt_data(data_dir, en_vocabulary_size, amr_vocabulary_size, amrseq_v
   en_vocab_path = os.path.join(data_dir, "vocab%d.en" % en_vocabulary_size)
   amr_vocab_path = os.path.join(data_dir, "vocab%d.amr" % amr_vocabulary_size)
   create_vocabulary(en_vocab_path, train_path + ".en", en_vocabulary_size, normalize_digits=True)
-  create_vocabulary(amr_vocab_path, train_path + "." + amrseq_version + ".amr", amr_vocabulary_size)
+  create_vocabulary(amr_vocab_path, train_path + ".amr", amr_vocabulary_size)
 
   # Create token ids for the training data.
   en_train_ids_path = train_path + (".ids%d.en" % en_vocabulary_size)
   amr_train_ids_path = train_path + (".ids%d.amr" % amr_vocabulary_size)
   data_to_token_ids(train_path + ".en", en_train_ids_path, en_vocab_path, normalize_digits=True)
-  data_to_token_ids(train_path + "." + amrseq_version + ".amr", amr_train_ids_path, amr_vocab_path)
+  data_to_token_ids(train_path + ".amr", amr_train_ids_path, amr_vocab_path)
 
   # Create token ids for the development data.
   en_dev_ids_path = dev_path + (".ids%d.en" % en_vocabulary_size)
   amr_dev_ids_path = dev_path + (".ids%d.amr" % amr_vocabulary_size)
   data_to_token_ids(dev_path + ".en", en_dev_ids_path, en_vocab_path, normalize_digits=True)
-  data_to_token_ids(dev_path + "." + amrseq_version + ".amr", amr_dev_ids_path, amr_vocab_path)
+  data_to_token_ids(dev_path  + ".amr", amr_dev_ids_path, amr_vocab_path)
 
-  return (en_train_ids_path, amr_train_ids_path,
-          en_dev_ids_path, amr_dev_ids_path,
+  # Create alignment dist path for training data; this has to be generated outside tfamr
+  train_alignment_path = train_path + ".align"
+  dev_alignment_path = dev_path + ".align"
+  
+
+  return (en_train_ids_path, amr_train_ids_path, train_alignment_path,
+          en_dev_ids_path, amr_dev_ids_path,  dev_alignment_path,
           en_vocab_path, amr_vocab_path)

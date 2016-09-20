@@ -26,7 +26,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.models.rnn.translate import data_utils
-
+import seq2seq_sa as seq2seq
 
 class Seq2SeqModel(object):
   """Sequence-to-sequence model with attention and for multiple buckets.
@@ -108,7 +108,7 @@ class Seq2SeqModel(object):
 
     # The seq2seq function: we use embedding for the input and attention.
     def seq2seq_f(encoder_inputs, decoder_inputs, do_decode):
-      return tf.nn.seq2seq.embedding_attention_seq2seq(
+      return seq2seq.embedding_attention_seq2seq(
           encoder_inputs, decoder_inputs, cell,
           num_encoder_symbols=source_vocab_size,
           num_decoder_symbols=target_vocab_size,
@@ -119,6 +119,7 @@ class Seq2SeqModel(object):
     # Feeds for inputs.
     self.encoder_inputs = []
     self.decoder_inputs = []
+    self.alignment_inputs = []
     self.target_weights = []
     for i in xrange(buckets[-1][0]):  # Last bucket is the biggest one.
       self.encoder_inputs.append(tf.placeholder(tf.int32, shape=[None],
@@ -128,6 +129,9 @@ class Seq2SeqModel(object):
                                                 name="decoder{0}".format(i)))
       self.target_weights.append(tf.placeholder(tf.float32, shape=[None],
                                                 name="weight{0}".format(i)))
+      if i > 0: # alignments also shifted by one
+        self.alignment_inputs.append(tf.placeholder(tf.float32, shape=None,
+                                                    name="alignment{0}".format(i)))
 
     # Our targets are decoder inputs shifted by one.
     targets = [self.decoder_inputs[i + 1]
@@ -135,8 +139,8 @@ class Seq2SeqModel(object):
 
     # Training outputs and losses.
     if forward_only:
-      self.outputs, self.losses = tf.nn.seq2seq.model_with_buckets(
-          self.encoder_inputs, self.decoder_inputs, targets,
+      self.outputs, self.losses = seq2seq.model_with_buckets(
+          self.encoder_inputs, self.decoder_inputs, self.alignment_inputs, targets,
           self.target_weights, buckets, lambda x, y: seq2seq_f(x, y, True),
           softmax_loss_function=softmax_loss_function)
       # If we use output projection, we need to project outputs for decoding.
@@ -147,8 +151,8 @@ class Seq2SeqModel(object):
               for output in self.outputs[b]
           ]
     else:
-      self.outputs, self.losses = tf.nn.seq2seq.model_with_buckets(
-          self.encoder_inputs, self.decoder_inputs, targets,
+      self.outputs, self.losses = seq2seq.model_with_buckets(
+          self.encoder_inputs, self.decoder_inputs, self.alignment_inputs, targets,
           self.target_weights, buckets,
           lambda x, y: seq2seq_f(x, y, False),
           softmax_loss_function=softmax_loss_function)
@@ -169,7 +173,7 @@ class Seq2SeqModel(object):
 
     self.saver = tf.train.Saver(tf.all_variables())
 
-  def step(self, session, encoder_inputs, decoder_inputs, target_weights,
+  def step(self, session, encoder_inputs, decoder_inputs, alignment_inputs, target_weights,
            bucket_id, forward_only):
     """Run a step of the model feeding the given inputs.
 
@@ -197,6 +201,9 @@ class Seq2SeqModel(object):
     if len(decoder_inputs) != decoder_size:
       raise ValueError("Decoder length must be equal to the one in bucket,"
                        " %d != %d." % (len(decoder_inputs), decoder_size))
+    if len(alignment_inputs) != decoder_size:
+      raise ValueError("Decoder length must be equal to the one in bucket,"
+                       " %d != %d." % (len(alignment_inputs), decoder_size))
     if len(target_weights) != decoder_size:
       raise ValueError("Weights length must be equal to the one in bucket,"
                        " %d != %d." % (len(target_weights), decoder_size))
@@ -208,6 +215,7 @@ class Seq2SeqModel(object):
     for l in xrange(decoder_size):
       input_feed[self.decoder_inputs[l].name] = decoder_inputs[l]
       input_feed[self.target_weights[l].name] = target_weights[l]
+      input_feed[self.alignment_inputs[l].name] = alignment_inputs[l]
 
     # Since our targets are decoder inputs shifted by one, we need one more.
     last_target = self.decoder_inputs[decoder_size].name
@@ -246,13 +254,14 @@ class Seq2SeqModel(object):
       the constructed batch that has the proper format to call step(...) later.
     """
     encoder_size, decoder_size = self.buckets[bucket_id]
-    encoder_inputs, decoder_inputs = [], []
+    encoder_inputs, decoder_inputs, alignment_inputs = [], [], []
 
     # Get a random batch of encoder and decoder inputs from data,
     # pad them if needed, reverse encoder inputs and add GO to decoder.
     for _ in xrange(self.batch_size):
-      encoder_input, decoder_input = random.choice(data[bucket_id])
-
+      encoder_input, decoder_input, alignment_input = random.choice(data[bucket_id])
+      assert len(decoder_input) == len(alignment_input), "%s %s" % (decoder_input, alignment_input)
+      
       # Encoder inputs are padded and then reversed.
       encoder_pad = [data_utils.PAD_ID] * (encoder_size - len(encoder_input))
       encoder_inputs.append(list(reversed(encoder_input + encoder_pad)))
@@ -262,8 +271,24 @@ class Seq2SeqModel(object):
       decoder_inputs.append([data_utils.GO_ID] + decoder_input +
                             [data_utils.PAD_ID] * decoder_pad_size)
 
+      PAD_ALIGN = np.zeros(encoder_size, dtype=np.float32) # the pad alignment
+      alignment_pad_size = decoder_size - len(alignment_input)
+      #alignment_dist_pad_size = encoder_size - len(encoder_input)
+      #reverse_pad_alignment_input = [list(reversed(algn + [0.0] * alignment_dist_pad_size)) for algn in alignment_input]
+      #alignment_inputs.append(reverse_pad_alignment_input + [PAD_ALIGN] * alignment_pad_size)
+      dense_alignment_input = []
+      for align in alignment_input: # convert the sparse representation to dense
+        dense_align = np.zeros(encoder_size, dtype=np.float32) # dense representation for one alignment
+        if align:
+          prob = 1.0 / float(len(align))
+          dense_align[align] = prob
+
+        dense_alignment_input.append(dense_align)
+      alignment_inputs.append(list(reversed(dense_alignment_input + [PAD_ALIGN] * alignment_pad_size)))
+
+
     # Now we create batch-major vectors from the data selected above.
-    batch_encoder_inputs, batch_decoder_inputs, batch_weights = [], [], []
+    batch_encoder_inputs, batch_decoder_inputs, batch_alignment_inputs, batch_weights = [], [], [], []
 
     # Batch encoder inputs are just re-indexed encoder_inputs.
     for length_idx in xrange(encoder_size):
@@ -277,6 +302,13 @@ class Seq2SeqModel(object):
           np.array([decoder_inputs[batch_idx][length_idx]
                     for batch_idx in xrange(self.batch_size)], dtype=np.int32))
 
+
+      batch_alignment_inputs.append(
+          np.array([alignment_inputs[batch_idx][length_idx]
+                    for batch_idx in xrange(self.batch_size)], dtype=np.float32))
+
+      
+
       # Create target_weights to be 0 for targets that are padding.
       batch_weight = np.ones(self.batch_size, dtype=np.float32)
       for batch_idx in xrange(self.batch_size):
@@ -287,4 +319,4 @@ class Seq2SeqModel(object):
         if length_idx == decoder_size - 1 or target == data_utils.PAD_ID:
           batch_weight[batch_idx] = 0.0
       batch_weights.append(batch_weight)
-    return batch_encoder_inputs, batch_decoder_inputs, batch_weights
+    return batch_encoder_inputs, batch_decoder_inputs, batch_alignment_inputs, batch_weights

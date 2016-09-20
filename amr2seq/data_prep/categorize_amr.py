@@ -114,6 +114,7 @@ def extractNodeMapping(alignments, amr_graph):
 
         else:
             edge_to_span[index].append((span_start, span_end, None))
+    
     new_node_to_span = mergeSpans(node_to_span)
     new_edge_to_span = mergeSpans(edge_to_span)
 
@@ -279,6 +280,7 @@ def categorizeParallelSequences(amr, tok_seq, all_alignments, pred_freq_thre=50,
     stack = [(amr.root, TOP, None, 0)] #Start from the root of the AMR
     aux_stack = []
     seq = []
+    
 
     cate_tok_seq = []
     ret_index = 0
@@ -294,9 +296,11 @@ def categorizeParallelSequences(amr, tok_seq, all_alignments, pred_freq_thre=50,
 
     while stack:
         old_depth = depth
-        curr_node_index, rel, parent, depth = stack.pop()
+        #curr_node_index, rel, parent, depth = stack.pop()
+        curr_node_index, incoming_edge_index, parent, depth = stack.pop()
         curr_node = amr.nodes[curr_node_index]
         curr_var = curr_node.node_str()
+        rel = amr.edges[incoming_edge_index].label if isinstance(incoming_edge_index, int) else incoming_edge_index
 
         i = 0
 
@@ -330,7 +334,7 @@ def categorizeParallelSequences(amr, tok_seq, all_alignments, pred_freq_thre=50,
             child_index = curr_edge.tail
             if curr_edge.label in exclude_rels:
                 continue
-            stack.append((child_index, curr_edge.label, curr_var, depth+1))
+            stack.append((child_index, edge_index, curr_var, depth+1))
 
     seq.extend(aux_stack[::-1])
     cate_span_map, end_index_map, covered_toks = categorizedSpans(all_alignments, node_to_label)
@@ -338,9 +342,11 @@ def categorizeParallelSequences(amr, tok_seq, all_alignments, pred_freq_thre=50,
     map_seq = []
     nodeindex_to_tokindex = {}  #The mapping
     label_to_index = defaultdict(int)
+    tok_seq2cate_tok_seq_index_map = {} # original tok seq to categorized tok seq index mapping
 
     for tok_index, tok in enumerate(tok_seq):
         if tok_index not in covered_toks:
+            tok_seq2cate_tok_seq_index_map[(tok_index, tok_index+1)] = len(cate_tok_seq)
             cate_tok_seq.append(tok)
             align_str = '%d-%d++%s++NONE++NONE++NONE' % (tok_index, tok_index+1, tok)
             map_seq.append(align_str)
@@ -359,7 +365,7 @@ def categorizeParallelSequences(amr, tok_seq, all_alignments, pred_freq_thre=50,
             nodeindex_to_tokindex[node_index] = indexed_aligned_label
             label_to_index[aligned_label] += 1
 
-
+            tok_seq2cate_tok_seq_index_map[(tok_index, end_index)] = len(cate_tok_seq)
             cate_tok_seq.append(indexed_aligned_label)
 
             #align_str = '%d-%d:%s:%d:%s:%s' % (tok_index, end_index, ' '.join(tok_seq[tok_index:end_index]), node_index, amr.nodes[node_index].node_str(), indexed_aligned_label)
@@ -367,9 +373,34 @@ def categorizeParallelSequences(amr, tok_seq, all_alignments, pred_freq_thre=50,
             align_str = '%d-%d++%s++%s++%s++%s' % (tok_index, end_index, ' '.join(tok_seq[tok_index:end_index]), wiki_label if wiki_label is not None else 'NONE', amr.nodes[node_index].node_str(), aligned_label)
             map_seq.append(align_str)
 
-    seq = [nodeindex_to_tokindex[node_index] if node_index in nodeindex_to_tokindex else label for (label, node_index) in seq]
+    alignment_seq = []
+    new_seq = []
+    #seq = [nodeindex_to_tokindex[node_index] if node_index in nodeindex_to_tokindex else label for (label, node_index) in seq]
+    for label, node_index in seq:
+        alignment = []
+        # for edge item in seq, node_index is None
+        # we don't handle edge alignment for now
+        if node_index is not None: # node in graph
+            if node_index in all_alignments:
+                orig_spans = all_alignments[node_index]
+                for orig_span in orig_spans:
+                    orig_span = orig_span[:2]
+                    if orig_span in tok_seq2cate_tok_seq_index_map: # categorized node
+                        alignment.append(tok_seq2cate_tok_seq_index_map[orig_span])
+                    else:
+                        try:
+                            alignment.extend(tok_seq2cate_tok_seq_index_map[(j,j+1)] for j in range(orig_span[0], orig_span[1]))
+                        except KeyError:
+                            print 'Embedded alignment!'
+                            print orig_span
+               # alignment = list(set(tok_seq2cate_tok_seq_index_map[orig_span[:2]] for orig_span in orig_spans))
 
-    return seq, cate_tok_seq, map_seq
+        graph_item = nodeindex_to_tokindex[node_index] if node_index in nodeindex_to_tokindex else label
+        new_seq.append(graph_item)
+
+        alignment_seq.append(alignment)
+        
+    return new_seq, cate_tok_seq, map_seq, alignment_seq
 
 def categorizedSpans(all_alignments, node_to_label):
     visited = set()
@@ -433,11 +464,13 @@ def linearize_amr(args):
         amr_seq_file = os.path.join(args.run_dir, 'amrseq')
         tok_seq_file = os.path.join(args.run_dir, 'tokseq')
         map_seq_file = os.path.join(args.run_dir, 'train_map')
+        align_seq_file = os.path.join(args.run_dir, 'align_map')
 
         amrseq_wf = open(amr_seq_file, 'w')
         tokseq_wf = open(tok_seq_file, 'w')
         mapseq_wf = open(map_seq_file, 'w')
-
+        alignseq_wf = open(align_seq_file, 'w')
+        
         for (sent_index, (tok_seq, pos_seq, alignment_seq, amr)) in enumerate(zip(toks, poss, alignments, amr_graphs)):
 
             logger.writeln('Sentence #%d' % (sent_index+1))
@@ -522,14 +555,16 @@ def linearize_amr(args):
 
             assert len(tok_seq) == len(pos_seq)
 
-            amr_seq, cate_tok_seq, map_seq = categorizeParallelSequences(amr, tok_seq, all_alignments, args.min_prd_freq, args.min_var_freq)
+            amr_seq, cate_tok_seq, map_seq, align_seq = categorizeParallelSequences(amr, tok_seq, all_alignments, args.min_prd_freq, args.min_var_freq)
             print >> amrseq_wf, ' '.join(amr_seq)
             print >> tokseq_wf, ' '.join(cate_tok_seq)
             print >> mapseq_wf, '##'.join(map_seq)  #To separate single space
+            print >> alignseq_wf, ';'.join(str(align) for align in align_seq)
 
         amrseq_wf.close()
         tokseq_wf.close()
         mapseq_wf.close()
+        alignseq_wf.close()
 
         print "one to one alignment: %lf" % (singleton_num/total_num)
         print "one to multiple alignment: %lf" % (multiple_num/total_num)

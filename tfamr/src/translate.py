@@ -60,11 +60,11 @@ tf.app.flags.DEFINE_integer("batch_size", 64,
                             "Batch size to use during training.")
 tf.app.flags.DEFINE_integer("size", 256, "Size of each model layer.")
 tf.app.flags.DEFINE_integer("num_layers", 1, "Number of layers in the model.")
-tf.app.flags.DEFINE_integer("en_vocab_size", 20000, "English vocabulary size.")
+tf.app.flags.DEFINE_integer("en_vocab_size", 6000, "English vocabulary size.")
 tf.app.flags.DEFINE_integer("fr_vocab_size", 2000, "French vocabulary size.")
 tf.app.flags.DEFINE_string("data_dir", "../data", "Data directory")
 tf.app.flags.DEFINE_string("train_dir", "../models", "Training directory.")
-tf.app.flags.DEFINE_string("amrseq_version", "1.1", "amr sequence version")
+tf.app.flags.DEFINE_string("amrseq_version", "1.2", "amr sequence version")
 tf.app.flags.DEFINE_integer("max_train_data_size", 0,
                             "Limit on the size of training data (0: no limit).")
 tf.app.flags.DEFINE_integer("steps_per_checkpoint", 200,
@@ -86,7 +86,7 @@ FLAGS = tf.app.flags.FLAGS
 _buckets = [(120, 120)]
 
 
-def read_data(source_path, target_path, max_size=None):
+def read_data(source_path, target_path, alignment_path, max_size=None):
   """Read data from source and target files and put into buckets.
 
   Args:
@@ -94,6 +94,7 @@ def read_data(source_path, target_path, max_size=None):
     target_path: path to the file with token-ids for the target language;
       it must be aligned with the source file: n-th line contains the desired
       output for n-th line from the source_path.
+    alignment_path: path to the alignment file
     max_size: maximum number of lines to read, all other will be ignored;
       if 0 or None, data files will be read completely (no limit).
 
@@ -106,21 +107,37 @@ def read_data(source_path, target_path, max_size=None):
   data_set = [[] for _ in _buckets]
   with gfile.GFile(source_path, mode="r") as source_file:
     with gfile.GFile(target_path, mode="r") as target_file:
-      source, target = source_file.readline(), target_file.readline()
-      counter = 0
-      while source and target and (not max_size or counter < max_size):
-        counter += 1
-        if counter % 100000 == 0:
-          print("  reading data line %d" % counter)
-          sys.stdout.flush()
-        source_ids = [int(x) for x in source.split()]
-        target_ids = [int(x) for x in target.split()]
-        target_ids.append(data_utils.EOS_ID)
-        for bucket_id, (source_size, target_size) in enumerate(_buckets):
-          if len(source_ids) < source_size and len(target_ids) < target_size:
-            data_set[bucket_id].append([source_ids, target_ids])
-            break
-        source, target = source_file.readline(), target_file.readline()
+      with gfile.GFile(alignment_path, mode="r") as alignment_file:
+        source, target, alignment = source_file.readline(), target_file.readline(), alignment_file.readline()
+        source = source.strip()
+        target = target.strip()
+        alignment = alignment.strip()
+        counter = 0
+        while source and target and (not max_size or counter < max_size):
+          counter += 1
+          if counter % 10000 == 0:
+            print("  reading data line %d" % counter)
+            sys.stdout.flush()
+          source_ids = [int(x) for x in source.split()]
+          target_ids = [int(x) for x in target.split()]
+          target_ids.append(data_utils.EOS_ID)
+          try:
+            alignment_dist = [[int(p) for p in x[1:-1].split(',')] if x != '[]' else None for x in alignment.split(';')]  # sparse vector; the alignment should include the eos dummy alignment
+          except ValueError:
+            import pdb
+            pdb.set_trace()
+
+          alignment_dist.append(None) # adding a dummy alignment for eos
+          
+          assert len(target_ids) == len(alignment_dist)
+          for bucket_id, (source_size, target_size) in enumerate(_buckets):
+            if len(source_ids) < source_size and len(target_ids) < target_size:
+              data_set[bucket_id].append([source_ids, target_ids, alignment_dist])
+              break
+          source, target, alignment = source_file.readline(), target_file.readline(), alignment_file.readline()
+          source = source.strip()
+          target = target.strip()
+          alignment = alignment.strip()
   return data_set
 
 
@@ -131,7 +148,7 @@ def create_model(session, forward_only):
       FLAGS.size, FLAGS.num_layers, FLAGS.max_gradient_norm, FLAGS.batch_size,
       FLAGS.learning_rate, FLAGS.learning_rate_decay_factor,
       forward_only=forward_only, keep_prob=FLAGS.dropout_rate)
-  ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
+  ckpt = tf.train.get_checkpoint_state(os.path.join(FLAGS.train_dir, FLAGS.amrseq_version))
   if ckpt and gfile.Exists(ckpt.model_checkpoint_path):
     print("Reading model parameters from %s" % ckpt.model_checkpoint_path)
     model.saver.restore(session, ckpt.model_checkpoint_path)
@@ -144,8 +161,8 @@ def create_model(session, forward_only):
 def train():
   """Train a en->fr translation model using WMT data."""
   # Prepare WMT data.
-  print("Preparing WMT data in %s" % FLAGS.data_dir)
-  en_train, fr_train, en_dev, fr_dev, _, _ = data_utils.prepare_wmt_data(
+  print("Preparing WMT data in %s/%s" % (FLAGS.data_dir, FLAGS.amrseq_version))
+  en_train, fr_train, alignment_train, en_dev, fr_dev, alignment_dev, _, _ = data_utils.prepare_wmt_data(
       FLAGS.data_dir, FLAGS.en_vocab_size, FLAGS.fr_vocab_size, FLAGS.amrseq_version)
 
   with tf.Session() as sess:
@@ -156,8 +173,8 @@ def train():
     # Read data into buckets and compute their sizes.
     print ("Reading development and training data (limit: %d)."
            % FLAGS.max_train_data_size)
-    #dev_set = read_data(en_dev, fr_dev)
-    train_set = read_data(en_train, fr_train, FLAGS.max_train_data_size)
+    dev_set = read_data(en_dev, fr_dev, alignment_dev)
+    train_set = read_data(en_train, fr_train, alignment_train, FLAGS.max_train_data_size)
     train_bucket_sizes = [len(train_set[b]) for b in xrange(len(_buckets))]
     train_total_size = float(sum(train_bucket_sizes))
 
@@ -181,9 +198,9 @@ def train():
 
       # Get a batch and make a step.
       start_time = time.time()
-      encoder_inputs, decoder_inputs, target_weights = model.get_batch(
+      encoder_inputs, decoder_inputs, alignment_inputs, target_weights = model.get_batch(
           train_set, bucket_id)
-      _, step_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
+      _, step_loss, _ = model.step(sess, encoder_inputs, decoder_inputs, alignment_inputs, 
                                    target_weights, bucket_id, False)
       step_time += (time.time() - start_time) / FLAGS.steps_per_checkpoint
       loss += step_loss / FLAGS.steps_per_checkpoint
@@ -201,20 +218,20 @@ def train():
           sess.run(model.learning_rate_decay_op)
         previous_losses.append(loss)
         # Save checkpoint and zero timer and loss.
-        checkpoint_path = os.path.join(FLAGS.train_dir, "translate.ckpt")
+        checkpoint_path = os.path.join(FLAGS.train_dir, FLAGS.amrseq_version, "translate.ckpt")
         model.saver.save(sess, checkpoint_path, global_step=model.global_step)
         step_time, loss = 0.0, 0.0
         # Run evals on development set and print their perplexity.
-        '''
+        
         for bucket_id in xrange(len(_buckets)):
-          encoder_inputs, decoder_inputs, target_weights = model.get_batch(
+          encoder_inputs, decoder_inputs, alignment_inputs, target_weights = model.get_batch(
               dev_set, bucket_id)
-          _, eval_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
+          _, eval_loss, _ = model.step(sess, encoder_inputs, decoder_inputs, alignment_inputs, 
                                        target_weights, bucket_id, True)
           eval_ppx = math.exp(eval_loss) if eval_loss < 300 else float('inf')
           print("  eval: bucket %d perplexity %.2f" % (bucket_id, eval_ppx))
         sys.stdout.flush()
-        '''
+
 
 
 def train_early_stop():
@@ -312,7 +329,7 @@ def train_early_stop():
           best_step = model.global_step.eval()
 
           # save the current checkpoint
-          checkpoint_path = os.path.join(FLAGS.train_dir, "translate.ckpt")
+          checkpoint_path = os.path.join(FLAGS.train_dir, FLAGS.amrseq_version,"translate.ckpt")
           model.saver.save(sess, checkpoint_path, global_step=model.global_step)
 
         if patience <= model.global_step.eval():
@@ -328,9 +345,9 @@ def decode():
     model.batch_size = 1  # We decode one sentence at a time.
 
     # Load vocabularies.
-    en_vocab_path = os.path.join(FLAGS.data_dir,
+    en_vocab_path = os.path.join(FLAGS.data_dir, FLAGS.amrseq_version, 
                                  "vocab%d.en" % FLAGS.en_vocab_size)
-    amr_vocab_path = os.path.join(FLAGS.data_dir,
+    amr_vocab_path = os.path.join(FLAGS.data_dir, FLAGS.amrseq_version,
                                  "vocab%d.amr" % FLAGS.fr_vocab_size)
     en_vocab, _ = data_utils.initialize_vocabulary(en_vocab_path)
     _, rev_fr_vocab = data_utils.initialize_vocabulary(amr_vocab_path)
@@ -348,10 +365,10 @@ def decode():
       bucket_id = min([b for b in xrange(len(_buckets))
                        if _buckets[b][0] > len(token_ids)])
       # Get a 1-element batch to feed the sentence to the model.
-      encoder_inputs, decoder_inputs, target_weights = model.get_batch(
-          {bucket_id: [(token_ids, [])]}, bucket_id)
+      encoder_inputs, decoder_inputs, alignment_inputs, target_weights = model.get_batch(
+          {bucket_id: [(token_ids, [], [])]}, bucket_id)
       # Get output logits for the sentence.
-      _, _, output_logits = model.step(sess, encoder_inputs, decoder_inputs,
+      _, _, output_logits = model.step(sess, encoder_inputs, decoder_inputs, alignment_inputs, 
                                        target_weights, bucket_id, True)
       # print(output_logits)
       # This is a greedy decoder - outputs are just argmaxes of output_logits.
@@ -377,15 +394,15 @@ def self_test():
     sess.run(tf.initialize_all_variables())
 
     # Fake data set for both the (3, 3) and (6, 6) bucket.
-    data_set = ([([1, 1], [2, 2]), ([3, 3], [4]), ([5], [6])],
-                [([1, 1, 1, 1, 1], [2, 2, 2, 2, 2]), ([3, 3, 3], [5, 6])])
-    for _ in xrange(5):  # Train the fake model for 5 steps.
+    data_set = ([([1, 1], [2, 2], [[0.5, 0.5], [0.3, 0.7]]), ([3, 3], [4], [[0.5, 0.5]]), ([5], [6], [[1.0]])],
+                [([1, 1, 1, 1, 1], [2, 2, 2, 2, 2], [[0.25, 0.25, 0.25, 0.25, 0.25], [0.25, 0.25, 0.25, 0.25, 0.25], [0.25, 0.25, 0.25, 0.25, 0.25], [0.25, 0.25, 0.25, 0.25, 0.25], [0.25, 0.25, 0.25, 0.25, 0.25]]), ([3, 3, 3], [5, 6], [[0.25, 0.25, 0.25], [0.25, 0.25, 0.25]])])
+    for i in xrange(5):  # Train the fake model for 5 steps.
       bucket_id = random.choice([0, 1])
-      encoder_inputs, decoder_inputs, target_weights = model.get_batch(
+      encoder_inputs, decoder_inputs, alignment_inputs, target_weights = model.get_batch(
           data_set, bucket_id)
-      model.step(sess, encoder_inputs, decoder_inputs, target_weights,
+      model.step(sess, encoder_inputs, decoder_inputs, alignment_inputs, target_weights,
                  bucket_id, False)
-
+    print("Done test.")
 
 def main(_):
   if FLAGS.self_test:
