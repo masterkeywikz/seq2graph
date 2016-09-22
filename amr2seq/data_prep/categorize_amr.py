@@ -714,6 +714,7 @@ def linearize_amr(args):
                     else:
                         entity_typ = ('DATE', "date-entity", "NONE")
                     all_spans.append((start, end, entity_typ))
+                    print 'Date:', start, end
                 else:
                     date_set.add(start)
 
@@ -721,6 +722,8 @@ def linearize_amr(args):
             for (start, end, entity_typ) in entities_in_sent:
                 if end - start > 1:
                     new_aligned = set(xrange(start, end))
+                    if len(aligned_set & new_aligned) != 0:
+                        continue
                     aligned_set |= new_aligned
                     entity_name = ' '.join(tok_seq[start:end])
                     if entity_name in mle_map:
@@ -764,6 +767,7 @@ def linearize_amr(args):
                         all_spans.append((index, index+1, ('-SURF-', curr_tok, "NONE")))
 
             all_spans = sorted(all_spans, key=lambda span: (span[0], span[1]))
+            print all_spans
             linearized_tokseq, map_repr_seq = getIndexedForm(all_spans)
 
             print >> tokseq_wf, ' '.join(linearized_tokseq)
