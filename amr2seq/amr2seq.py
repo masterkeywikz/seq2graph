@@ -6,8 +6,10 @@ import string
 import gflags
 from amr_graph import AMR
 from collections import OrderedDict, defaultdict
-from constants import TOP,LBR,RBR,RET,SURF,CONST,END,VERB
+#from constants import TOP,LBR,RBR,RET,SURF,CONST,END,VERB
+from constants import *
 from parser import ParserError
+from date_extraction import *
 FLAGS=gflags.FLAGS
 gflags.DEFINE_string("version",'1.0','version for the sequence generated')
 gflags.DEFINE_integer("min_prd_freq",50,"threshold for filtering out predicates")
@@ -200,7 +202,7 @@ class AMR_seq:
 
         return [],var
 
-    def restore_amr(self, tok_seq, amrseq, repr_map):
+    def restore_amr(self, tok_seq, lemma_seq, amrseq, repr_map):
         '''
         Given a linearized amr sequence, restore its amr graph
         Deal with non-matching parenthesis
@@ -208,58 +210,63 @@ class AMR_seq:
         def rebuild_seq(parsed_seq):
             new_seq = []
             stack = []
+            try:
 
-            while parsed_seq[-1][1] == "LPAR": #Delete the last few left parenthesis
-                parsed_seq = parsed_seq[:-1]
+                while parsed_seq[-1][1] == "LPAR": #Delete the last few left parenthesis
+                    parsed_seq = parsed_seq[:-1]
 
-            assert len(parsed_seq) > 0, parsed_seq
-            for (token, type) in parsed_seq:
-                if type == "LPAR": #Left parenthesis
-                    if stack and stack[-1][1] == "LPAR":
-                        new_token = 'ROOT'
-                        new_type = 'NONPRED'
-                        stack.append((new_token, new_type))
-                        new_seq.append((new_token, new_type))
+                assert len(parsed_seq) > 0, parsed_seq
+                for (token, type) in parsed_seq:
+                    if type == "LPAR": #Left parenthesis
+                        if stack and stack[-1][1] == "LPAR":
+                            new_token = 'ROOT'
+                            new_type = 'NONPRED'
+                            stack.append((new_token, new_type))
+                            new_seq.append((new_token, new_type))
 
-                    stack.append((token, type))
-                    new_seq.append((token, type))
-                elif type == "RPAR": #Right parenthesis
-                    assert stack
-                    if stack[-1][1] == "LPAR": #No concept for this edge, remove
-                        stack.pop()
-                        new_seq.pop()
-                    elif stack[-2][0][:-1] == '-TOP-':
-                        continue
-                    else:
-                        stack.pop()
-                        ledgelabel, ltype = stack.pop()
-                        try:
-                            assert ltype == "LPAR", ('%s %s'% (ledgelabel, ltype))
-                        except:
-                            print stack
-                            print ledgelabel, ltype
-                            print token, type
-                            sys.exit(1)
-                        redgelabel = ')%s' % (ledgelabel[:-1])
-                        new_seq.append((redgelabel, "RPAR"))
-                else:
-                    if stack[-1][1] == "LPAR":
                         stack.append((token, type))
                         new_seq.append((token, type))
-            while stack:
-                while stack[-1][1] == "LPAR" and stack:
+                    elif type == "RPAR": #Right parenthesis
+                        assert stack
+                        if stack[-1][1] == "LPAR": #No concept for this edge, remove
+                            stack.pop()
+                            new_seq.pop()
+                        elif stack[-2][0][:-1] == '-TOP-':
+                            continue
+                        else:
+                            stack.pop()
+                            ledgelabel, ltype = stack.pop()
+                            try:
+                                assert ltype == "LPAR", ('%s %s'% (ledgelabel, ltype))
+                            except:
+                                print stack
+                                print ledgelabel, ltype
+                                print token, type
+                                sys.exit(1)
+                            redgelabel = ')%s' % (ledgelabel[:-1])
+                            new_seq.append((redgelabel, "RPAR"))
+                    else:
+                        if stack[-1][1] == "LPAR":
+                            stack.append((token, type))
+                            new_seq.append((token, type))
+                while stack:
+                    while stack[-1][1] == "LPAR" and stack:
+                        stack.pop()
+
+                    if not stack:
+                        break
+
                     stack.pop()
+                    ledgelabel, ltype = stack.pop()
+                    assert ltype == "LPAR"
+                    redgelabel = ')%s' % (ledgelabel[:-1])
+                    new_seq.append((redgelabel, "RPAR"))
 
-                if not stack:
-                    break
-
-                stack.pop()
-                ledgelabel, ltype = stack.pop()
-                assert ltype == "LPAR"
-                redgelabel = ')%s' % (ledgelabel[:-1])
-                new_seq.append((redgelabel, "RPAR"))
-
-            return new_seq
+                return new_seq
+            except:
+                print parsed_seq
+                print new_seq
+                sys.exit(1)
 
         def make_compiled_regex(rules):
             regexstr =  '|'.join('(?P<%s>%s)' % (name, rule) for name, rule in rules)
@@ -287,6 +294,25 @@ class AMR_seq:
             #ent_repr = '%s %s name( name %s )name' % (entity_name, wiki_str, ' '.join(ops_strs))
             return ent_repr
 
+        def buildLinearVerbal(lemma, node_repr):
+            assert lemma in VERB_LIST
+            subgraph = None
+            for g in VERB_LIST[lemma]:
+                if node_repr in g:
+                    subgraph = g
+                    break
+
+            verbal_repr = node_repr
+            for rel, subj in subgraph[node_repr].items():
+                verbal_repr = '%s %s( %s )%s' % (verbal_repr, rel, subj, rel)
+            return verbal_repr
+
+        def buildLinearDate(rels):
+            date_repr = 'date-entity'
+            for rel, subj in rels:
+                date_repr = '%s %s( %s )%s' % (date_repr, rel, subj, rel)
+            return date_repr
+
         amr = AMR()
         #print amrseq.strip()
         seq = amrseq.strip().split()
@@ -307,6 +333,14 @@ class AMR_seq:
                 if 'NE' in tok: #Is a named entity
                     #print ' '.join(tok_seq[start:end])
                     branch_form = buildLinearEnt(node_repr, tok_seq[start:end], wiki_label)  #Here rebuild the op representation of the named entity
+                    new_seq.append(branch_form)
+                elif 'VERBAL' in tok:  #Is in verbalization list, should rebuild
+                    assert end == start + 1
+                    branch_form = buildLinearVerbal(lemma_seq[start], node_repr)
+                    new_seq.append(branch_form)
+                elif 'DATE' in tok: #Rebuild a date entity
+                    rels = dateRepr(tok_seq[start:end])
+                    branch_form = buildLinearDate(rels)
                     new_seq.append(branch_form)
                 else:
                     new_seq.append(node_repr)
@@ -565,14 +599,14 @@ def amr2sequence(toks, amr_graphs, alignments, poss, out_seq_file, amr_stats):
             seq = ' '.join(amr_seq.linearize_amr(instance))
             print >> outf, seq
 
-def sequence2amr(toks, amrseqs, cate_to_repr, out_amr_file):
+def sequence2amr(toks, lemmas, amrseqs, cate_to_repr, out_amr_file):
     amr_seq = AMR_seq()
     with open(out_amr_file, 'w') as outf:
         print 'Restoring AMR graphs ...'
         for i, (s, repr_map) in enumerate(zip(amrseqs, cate_to_repr)):
             print 'No ' + str(i) + ':' + ' '.join(toks[i])
             #print repr_map
-            restored_amr = amr_seq.restore_amr(toks[i], s, repr_map)
+            restored_amr = amr_seq.restore_amr(toks[i], lemmas[i], s, repr_map)
             if 'NONE' in restored_amr.to_amr_string():
                 print s
                 print repr_map
@@ -601,6 +635,7 @@ if __name__ == "__main__":
     alignment_file = os.path.join(FLAGS.data_dir, 'alignment')
     sent_file = os.path.join(FLAGS.data_dir, 'sentence')
     tok_file = os.path.join(FLAGS.data_dir, 'token')
+    lemma_file = os.path.join(FLAGS.data_dir, 'lemmatized_token')
     pos_file = os.path.join(FLAGS.data_dir, 'pos')
     map_file = os.path.join(FLAGS.data_dir, 'cate_map')
     cate_to_repr = []   #Maintain a map for each sentence
@@ -630,7 +665,7 @@ if __name__ == "__main__":
 
     sents = [line.strip().split() for line in open(sent_file, 'r')]
     toks = [line.strip().split() for line in open(tok_file, 'r')]
-    #lemmas = [line.strip().split() for line in open(lemma_file, 'r')]
+    lemmas = [line.strip().split() for line in open(lemma_file, 'r')]
     poss = [line.strip().split() for line in open(pos_file, 'r')]
 
     if FLAGS.amr2seq:
@@ -656,6 +691,6 @@ if __name__ == "__main__":
 
     if FLAGS.seq2amr:
         amr_result_file = os.path.join(FLAGS.data_dir, 'amr.%s' % FLAGS.version)
-        sequence2amr(toks, amrseqs, cate_to_repr, amr_result_file)
+        sequence2amr(toks, lemmas, amrseqs, cate_to_repr, amr_result_file)
 
 

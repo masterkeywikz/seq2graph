@@ -4,9 +4,10 @@
 
 INPUT=$1
 # clear up the parsed file
-tail -n +2 $INPUT | sed 's/> //g' > $INPUT.tmp
+#tail -n +1 $INPUT | sed 's/> //g' > $INPUT.tmp
+cat $INPUT > $INPUT.tmp
 
 #If AMR to sequence
-python amr2seq.py --data_dir ../dev --amrseq_file $INPUT.tmp --seq2amr --version 1.1
+python amr2seq.py --data_dir ../dev --amrseq_file $INPUT.tmp --seq2amr --version 2.2
 
-rm $INPUT.tmp
+#rm $INPUT.tmp
