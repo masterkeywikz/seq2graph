@@ -266,7 +266,8 @@ class AMR_seq:
             except:
                 print parsed_seq
                 print new_seq
-                sys.exit(1)
+                #sys.exit(1)
+                return new_seq
 
         def make_compiled_regex(rules):
             regexstr =  '|'.join('(?P<%s>%s)' % (name, rule) for name, rule in rules)
@@ -353,7 +354,11 @@ class AMR_seq:
                     tok = tok[4:]
                 elif 'RET' in tok or isSpecial(tok):  #Reentrancy, currently not supported
                     prev_elabel = new_seq[-1]
-                    assert prev_elabel[-1] == '(', prev_elabel
+                    try:
+                        assert prev_elabel[-1] == '(', prev_elabel
+                    except:
+                        print 'RET after a label', prev_elabel
+                        return None
                     prev_elabel = prev_elabel[:-1]
                     if i +1 < len(seq):
                         next_elabel = seq[i+1]
@@ -411,6 +416,8 @@ class AMR_seq:
         REDGE = 4
         RCNODE = 5
         parsed_seq = rebuild_seq(parsed_seq)
+        if not parsed_seq:
+            return None
 
         token_seq = [token for (token, type) in parsed_seq]
 
@@ -542,7 +549,11 @@ class AMR_seq:
                         state = 3
                         stack.append((CNODE, parentnodelabel, parentconcept))
                     else: #Single concept AMR
-                        assert len(stack) == 1 and stack[-1][1] == "-TOP-", "Not start with TOP"
+                        try:
+                            assert len(stack) == 1 and stack[-1][1] == "-TOP-", "Not start with TOP"
+                        except:
+                            print 'Not start with TOP', parsed_seq
+                            return None
                         stack.pop()
                         if amr.roots:
                             break
@@ -607,6 +618,10 @@ def sequence2amr(toks, lemmas, amrseqs, cate_to_repr, out_amr_file):
             print 'No ' + str(i) + ':' + ' '.join(toks[i])
             #print repr_map
             restored_amr = amr_seq.restore_amr(toks[i], lemmas[i], s, repr_map)
+            if not restored_amr:
+                print >> outf, '(a / amr-unknown)'
+                print >> outf, ''
+                continue
             if 'NONE' in restored_amr.to_amr_string():
                 print s
                 print repr_map
