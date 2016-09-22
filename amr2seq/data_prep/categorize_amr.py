@@ -86,12 +86,15 @@ def getDateAttr(frag):
     amr_graph = frag.graph
     root_node = amr_graph.nodes[root_index]
 
+    index_to_attr = {}
+
     attr_indices = set()
     for edge_index in root_node.v_edges:
         curr_edge = amr_graph.edges[edge_index]
         if curr_edge.label in date_relations:
             attr_indices.add(curr_edge.tail)
-    return attr_indices
+            index_to_attr[curr_edge.tail] = curr_edge.label.upper()
+    return (attr_indices, index_to_attr)
 
 #Given an alignment and the fragment, output the covered span
 def getSpanSide(toks, alignments, frag, unaligned_toks):
@@ -99,7 +102,9 @@ def getSpanSide(toks, alignments, frag, unaligned_toks):
     amr_graph = frag.graph
 
     covered_set = set()
-    all_date_attrs = getDateAttr(frag)
+    all_date_attrs, index_to_attr = getDateAttr(frag)
+
+    index_to_toks = defaultdict(list)
 
     for curr_align in reversed(alignments):
         curr_tok = curr_align.split('-')[0]
@@ -114,6 +119,7 @@ def getSpanSide(toks, alignments, frag, unaligned_toks):
         if index_type == 'c':
             if frag.nodes[index] == 1: #Covered current
                 covered_set.add(span_start)
+                index_to_toks[index].append(span_start)
                 if index in all_date_attrs:
                     all_date_attrs.remove(index)
 
@@ -123,7 +129,7 @@ def getSpanSide(toks, alignments, frag, unaligned_toks):
 
     covered_toks = sorted(list(covered_set))
     non_covered = [amr_graph.nodes[index].node_str() for index in all_date_attrs]
-    return covered_toks, non_covered
+    return covered_toks, non_covered, index_to_toks
 
 def extractNodeMapping(alignments, amr_graph):
     aligned_set = set()
@@ -325,9 +331,9 @@ def similarTok(curr_var, tok):
     tok_len = len(tok)
     if var_len > 3 and tok_len > 3 and tok[:4] == curr_var[:4]:
         return True
-    if is_num(tok) and tok in curr_var:
+    if isNum(tok) and tok in curr_var:
         return True
-    if is_num(curr_var) and curr_var in tok:
+    if isNum(curr_var) and curr_var in tok:
         return True
 
 #Traverse AMR from top down, also categorize the sequence in case of alignment existed
@@ -593,7 +599,9 @@ def linearize_amr(args):
             ####Process date entities
             date_entity_frags = amr.extract_all_dates()
             for frag in date_entity_frags:
-                covered_toks, non_covered = getSpanSide(tok_seq, alignment_seq, frag, temp_unaligned)
+                all_date_indices, index_to_attr = getDateAttr(frag)
+                covered_toks, non_covered, index_to_toks = getSpanSide(tok_seq, alignment_seq, frag, temp_unaligned)
+
                 covered_set = set(covered_toks)
 
                 all_spans = getContinuousSpans(covered_toks, temp_unaligned, covered_set)
@@ -612,7 +620,8 @@ def linearize_amr(args):
                     for span_start, span_end in all_spans:
                         all_alignments[frag.root].append((span_start, span_end, None))
                         temp_aligned |= set(xrange(span_start, span_end))
-                        print 'Dates: %s' % ' '.join(tok_seq[span_start:span_end])
+                        if len(non_covered) == 0:
+                            print 'Dates: %s' % ' '.join(tok_seq[span_start:span_end])
                 else:
                     for index in temp_unaligned:
                         curr_tok = tok_seq[index]

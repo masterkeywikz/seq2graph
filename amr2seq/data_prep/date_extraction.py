@@ -6,6 +6,7 @@ timezone = set(['UTC', 'GMT', 'AEDT', 'EST', 'DST'])
 days = set(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'])
 date_suffixes = set(['th', 'st', 'nd', 's'])
 day_zone = set(['morning', 'evening', 'afternoon', 'night', 'noon', 'midday', 'midnight'])
+seasons = set(['spring', 'summer', 'fall', 'winter'])
 def isNum(s):
     regex = re.compile('[0-9]+([^0-9\s]*)')
     match = regex.match(s)
@@ -57,6 +58,79 @@ def extractTemplate(s):
             template.append(tok)
     return ' '.join(template)
 
+def dateRepr(toks):
+    rels = []
+
+    exist_rels = set()
+
+    month_map = months
+    abbr_month = monthAbbre(month_map)
+
+    day_map = days
+    has_year = False
+    has_month = False
+    has_century = False
+
+    for tok in toks:
+        if isYear(tok):
+            has_year = True
+        elif tok in month_map:
+            has_month = True
+        elif tok in abbr_month:
+            has_month = True
+        elif tok == 'century':
+            has_century = True
+        #elif tok == 's':
+
+    for tok in toks:
+        if isYear(tok):
+            rels.append(('year', str(int(tok))))
+
+        elif tok in month_map:
+            rels.append(('month', str(month_map[tok])))
+        elif tok in abbr_month:
+            rels.append(('month', str(abbr_month[tok])))
+        elif tok in day_map:
+            rels.append(('weekday', tok.lower()))
+        elif tok in day_zone:
+            rels.append(('dayperiod', tok))
+        elif isNum(tok):
+            if len(tok) == 8: #YYYYMMDD
+                rels.append(('day', str(int(tok[6:]))))
+                rels.append(('month', str(int(tok[4:6]))))
+                rels.append(('year', str(int(tok[:4]))))
+            elif len(tok) == 6: #YYMMDD
+                year = int(tok[:2])
+                if year < 50: #20YY
+                    rels.append(('year', '20%d' % year))
+                else:
+                    rels.append(('year', '19%d' % year))
+                month = int(tok[2:4])
+                if month > 0 and month <= 12:
+                    rels.append(('month', '%d' % month))
+                day = int(tok[4:])
+                if day > 0 and day <= 31:
+                    rels.append(('day', '%d' % day))
+            elif len(tok) == 2:
+                if has_century:
+                    rels.append(('century', str(int(tok))))
+                elif not has_month:
+                    rels.append(('month', str(int(tok))))
+                    has_month = True
+                else:
+                    rels.append(('day', str(int(tok))))
+
+            elif len(tok) == 1:
+                if not has_month and int(tok) < 12:
+                    rels.append(('month', str(int(tok))))
+                else:
+                    rels.append(('day', str(int(tok))))
+        elif tok in seasons:
+            rels.append(('season', tok))
+    if not rels:
+        print 'weird: %s' % (' '.join(toks))
+    return rels
+
 def loadTemplates(file):
     temp_map = {}
     for line in open(file):
@@ -76,6 +150,30 @@ def isDay(tok):
         return False
     date = int(tok)
     return date >= 0 and date <= 31
+
+def mergeDates(dates_in_line, toks):
+    unalign_symbols = set(['@:@', 'of', 'on', 'at', ',', ':'])
+    prev_start = None
+    prev_end = None
+    new_spans = []
+    for (start, end) in dates_in_line:
+        if prev_end is not None:
+            between_set = set(xrange(prev_end, start))
+            valid = True
+            for index in between_set:
+                if toks[index] not in unalign_symbols and (not isNum(toks[index])):
+                    valid = False
+                    new_spans.append((prev_start, prev_end))
+                    prev_start, prev_end = start, end
+                    break
+            if valid:
+                prev_end = end
+
+        else:
+            prev_start, prev_end = start, end
+    if prev_end is not None:
+        new_spans.append((prev_start, prev_end))
+    return new_spans
 
 def extractDates(file, template_file):
     tempt_map = loadTemplates(template_file)
@@ -110,12 +208,13 @@ def extractDates(file, template_file):
                             if day > 31:
                                 continue
 
-
-
-                        #print 'Dates:', ' '.join(toks[start:end])
-                        dates_in_line.append('%d-%d' % (start, end))
+                        dates_in_line.append((start, end))
                         aligned |= span_set
                         break
+            #print dates_in_line
+            dates_in_line = mergeDates(dates_in_line, toks)
+            dates_in_line = ['%d-%d' % (start ,end) for (start, end) in dates_in_line]
+
             print ' '.join(dates_in_line)
 
 if __name__ == '__main__':
