@@ -283,8 +283,8 @@ class Seq2SeqModel(object):
           prob = 1.0 / float(len(align))
           dense_align[align] = prob
 
-        dense_alignment_input.append(dense_align)
-      alignment_inputs.append(list(reversed(dense_alignment_input + [PAD_ALIGN] * alignment_pad_size)))
+        dense_alignment_input.append(dense_align[::-1])
+      alignment_inputs.append(dense_alignment_input + [PAD_ALIGN] * alignment_pad_size)
 
 
     # Now we create batch-major vectors from the data selected above.

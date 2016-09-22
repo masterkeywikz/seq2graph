@@ -365,7 +365,7 @@ def categorizeParallelSequences(amr, tok_seq, all_alignments, pred_freq_thre=50,
             nodeindex_to_tokindex[node_index] = indexed_aligned_label
             label_to_index[aligned_label] += 1
 
-            tok_seq2cate_tok_seq_index_map[(tok_index, end_index)] = len(cate_tok_seq)
+            #tok_seq2cate_tok_seq_index_map[(tok_index, end_index)] = len(cate_tok_seq)
             cate_tok_seq.append(indexed_aligned_label)
 
             #align_str = '%d-%d:%s:%d:%s:%s' % (tok_index, end_index, ' '.join(tok_seq[tok_index:end_index]), node_index, amr.nodes[node_index].node_str(), indexed_aligned_label)
@@ -388,11 +388,11 @@ def categorizeParallelSequences(amr, tok_seq, all_alignments, pred_freq_thre=50,
                     if orig_span in tok_seq2cate_tok_seq_index_map: # categorized node
                         alignment.append(tok_seq2cate_tok_seq_index_map[orig_span])
                     else:
-                        try:
-                            alignment.extend(tok_seq2cate_tok_seq_index_map[(j,j+1)] for j in range(orig_span[0], orig_span[1]))
-                        except KeyError:
-                            print 'Embedded alignment!'
-                            print orig_span
+                        #try:
+                        alignment.extend(tok_seq2cate_tok_seq_index_map[(j,j+1)] for j in range(orig_span[0], orig_span[1]) if (j, j+1) in tok_seq2cate_tok_seq_index_map)
+                        #except KeyError:
+                        #    print 'Embedded alignment!'
+                        #    print orig_span
                # alignment = list(set(tok_seq2cate_tok_seq_index_map[orig_span[:2]] for orig_span in orig_spans))
 
         graph_item = nodeindex_to_tokindex[node_index] if node_index in nodeindex_to_tokindex else label

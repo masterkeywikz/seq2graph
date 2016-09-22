@@ -336,7 +336,14 @@ class AMR_seq:
                         #print seq
 
                 new_seq.append(tok)
-
+                
+        if not new_seq: # sequence is empty
+            unklabel = 'a'
+            foo = amr[unklabel]
+            amr.roots.append(unklabel)
+            amr.node_to_concepts[unklabel] = 'amr-unkown'
+            return amr
+            
         amrseq = ' '.join(new_seq)
         seq = amrseq.split()
         triples = []
@@ -376,7 +383,14 @@ class AMR_seq:
         LEDGE = 3
         REDGE = 4
         RCNODE = 5
+        #print parsed_seq
+
         parsed_seq = rebuild_seq(parsed_seq)
+
+
+
+
+            
 
         token_seq = [token for (token, type) in parsed_seq]
 
