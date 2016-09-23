@@ -71,7 +71,10 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import init_ops
 
+import tensorflow as tf
+import math
 
 def _extract_argmax_and_embed(embedding, output_projection=None,
                               update_embedding=True):
@@ -494,7 +497,7 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, cell,
     raise ValueError("Shape[1] and [2] of attention_states must be known: %s"
                      % attention_states.get_shape())
   if output_size is None:
-    output_size = cell.output_size
+    output_size = cell[0].output_size * 2 if isinstance(cell, tuple) else cell.output_size
 
   with variable_scope.variable_scope(scope or "attention_decoder"):
     batch_size = array_ops.shape(decoder_inputs[0])[0]  # Needed for reshaping.
@@ -539,6 +542,7 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, cell,
     outputs = []
     soft_aligns = []
     prev = None
+    decoder_cell = rnn_cell.BasicLSTMCell(output_size)
     batch_attn_size = array_ops.pack([batch_size, attn_size])
     attns = [array_ops.zeros(batch_attn_size, dtype=dtype)
              for _ in xrange(num_heads)]
@@ -554,9 +558,10 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, cell,
         with variable_scope.variable_scope("loop_function", reuse=True):
           inp = loop_function(prev, i)
       # Merge input and previous attentions into one vector of the right size.
-      x = rnn_cell.linear([inp] + attns, cell.input_size, True)
+      x = rnn_cell.linear([inp] + attns, cell[0].input_size, True)
       # Run the RNN.
-      cell_output, state = cell(x, state)
+      
+      cell_output, state = decoder_cell(x, state)
       # Run the attention mechanism.
       if i == 0 and initial_state_attention:
         with variable_scope.variable_scope(variable_scope.get_variable_scope(),
@@ -627,7 +632,10 @@ def embedding_attention_decoder(decoder_inputs, initial_state, attention_states,
     ValueError: When output_projection has the wrong shape.
   """
   if output_size is None:
-    output_size = cell.output_size
+    if isinstance(cell, tuple):
+      output_size = cell[0].output_size * 2
+    else:
+      output_size = cell.output_size
   if output_projection is not None:
     proj_biases = ops.convert_to_tensor(output_projection[1], dtype=dtype)
     proj_biases.get_shape().assert_is_compatible_with([num_symbols])
@@ -696,16 +704,36 @@ def embedding_attention_seq2seq(encoder_inputs, decoder_inputs, cell,
   """
   with variable_scope.variable_scope(scope or "embedding_attention_seq2seq"):
     # Encoder.
-    encoder_cell = rnn_cell.EmbeddingWrapper(
-        cell, embedding_classes=num_encoder_symbols,
-        embedding_size=embedding_size)
-    encoder_outputs, encoder_state = rnn.rnn(
-        encoder_cell, encoder_inputs, dtype=dtype)
+
+    if isinstance(cell, tuple):
+      encoder_fw_cell = cell[0]
+      encoder_bw_cell = cell[1]
+      
+      sqrt3 = math.sqrt(3)  # Uniform(-sqrt(3), sqrt(3)) has variance=1.
+      initializer = init_ops.random_uniform_initializer(-sqrt3, sqrt3)
+        
+      embedding = variable_scope.get_variable(
+        "encoder_embedding", [num_encoder_symbols, embedding_size],
+        initializer=initializer,
+        dtype=dtype)
+      embedded_encoder_inputs = embedding_ops.embedding_lookup(
+        embedding, tf.pack(encoder_inputs))
+
+      encoder_outputs, encoder_fw_state, encoder_bw_state = rnn.bidirectional_rnn(
+        encoder_fw_cell, encoder_bw_cell, tf.unpack(embedded_encoder_inputs), dtype=dtype)
+    else:
+      encoder_cell = rnn_cell.EmbeddingWrapper(
+          cell, embedding_classes=num_encoder_symbols,
+          embedding_size=embedding_size)
+      encoder_outputs, encoder_state = rnn.rnn(
+          encoder_cell, encoder_inputs, dtype=dtype)
 
     # First calculate a concatenation of encoder outputs to put attention on.
-    top_states = [array_ops.reshape(e, [-1, 1, cell.output_size])
+    top_states = [array_ops.reshape(e, [-1, 1, cell[0].output_size * 2]) if isinstance(cell, tuple) else
+                  array_ops.reshape(e, [-1, 1, cell.output_size])
                   for e in encoder_outputs]
     attention_states = array_ops.concat(1, top_states)
+    encoder_state = array_ops.concat(1, [encoder_fw_state, encoder_bw_state])
 
     # Decoder.
     output_size = None

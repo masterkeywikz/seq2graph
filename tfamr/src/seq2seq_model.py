@@ -45,8 +45,8 @@ class Seq2SeqModel(object):
 
   def __init__(self, source_vocab_size, target_vocab_size, buckets, size,
                num_layers, max_gradient_norm, batch_size, learning_rate,
-               learning_rate_decay_factor, use_lstm=True,
-               num_samples=512, forward_only=False, keep_prob=1.0):
+               learning_rate_decay_factor, use_lstm=True, bidirection=True,
+               num_samples=512, forward_only=False, keep_prob=0.5):
     """Create the model.
 
     Args:
@@ -100,8 +100,19 @@ class Seq2SeqModel(object):
     single_cell = tf.nn.rnn_cell.GRUCell(size)
     if use_lstm:
       single_cell = tf.nn.rnn_cell.BasicLSTMCell(size)
+      if bidirection:
+        # Forward direction cell
+        lstm_fw_cell = tf.nn.rnn_cell.BasicLSTMCell(size // 2)
+        # Backward direction cell
+        lstm_bw_cell = tf.nn.rnn_cell.BasicLSTMCell(size // 2)
+        single_cell = (lstm_fw_cell, lstm_bw_cell)
       if not forward_only and keep_prob < 1:
-        single_cell = tf.nn.rnn_cell.DropoutWrapper(single_cell, output_keep_prob=keep_prob)
+        if bidirection:
+          dropout_lstm_fw_cell = tf.nn.rnn_cell.DropoutWrapper(single_cell[0], output_keep_prob=keep_prob)
+          dropout_lstm_bw_cell = tf.nn.rnn_cell.DropoutWrapper(single_cell[1], output_keep_prob=keep_prob)
+          single_cell = (dropout_lstm_fw_cell, dropout_lstm_bw_cell)
+        else:
+          single_cell = tf.nn.rnn_cell.DropoutWrapper(single_cell, output_keep_prob=keep_prob)
     cell = single_cell
     if num_layers > 1:
       cell = tf.nn.rnn_cell.MultiRNNCell([single_cell] * num_layers)
@@ -162,7 +173,8 @@ class Seq2SeqModel(object):
     if not forward_only:
       self.gradient_norms = []
       self.updates = []
-      opt = tf.train.GradientDescentOptimizer(self.learning_rate)
+      #opt = tf.train.GradientDescentOptimizer(self.learning_rate)
+      opt = tf.train.AdamOptimizer(self.learning_rate)
       for b in xrange(len(buckets)):
         gradients = tf.gradients(self.losses[b], params)
         clipped_gradients, norm = tf.clip_by_global_norm(gradients,

@@ -168,6 +168,7 @@ def train():
   with tf.Session() as sess:
     # Create model.
     print("Creating %d layers of %d units." % (FLAGS.num_layers, FLAGS.size))
+
     model = create_model(sess, False)
 
     # Read data into buckets and compute their sizes.
@@ -388,19 +389,21 @@ def self_test():
   """Test the translation model."""
   with tf.Session() as sess:
     print("Self-test for neural translation model.")
+    import ipdb
+    ipdb.set_trace()
     # Create model with vocabularies of 10, 2 small buckets, 2 layers of 32.
-    model = seq2seq_model.Seq2SeqModel(10, 10, [(3, 3), (6, 6)], 32, 2,
+    model = seq2seq_model.Seq2SeqModel(10, 10, [(3, 3), (6, 6)], 32, 1,
                                        5.0, 32, 0.3, 0.99, num_samples=8)
     sess.run(tf.initialize_all_variables())
 
     # Fake data set for both the (3, 3) and (6, 6) bucket.
-    data_set = ([([1, 1], [2, 2], [[0.5, 0.5], [0.3, 0.7]]), ([3, 3], [4], [[0.5, 0.5]]), ([5], [6], [[1.0]])],
-                [([1, 1, 1, 1, 1], [2, 2, 2, 2, 2], [[0.25, 0.25, 0.25, 0.25, 0.25], [0.25, 0.25, 0.25, 0.25, 0.25], [0.25, 0.25, 0.25, 0.25, 0.25], [0.25, 0.25, 0.25, 0.25, 0.25], [0.25, 0.25, 0.25, 0.25, 0.25]]), ([3, 3, 3], [5, 6], [[0.25, 0.25, 0.25], [0.25, 0.25, 0.25]])])
+    data_set = ([([1, 1], [2, 2], [[1,2], [1,2]]), ([3, 3], [4], [None]), ([5], [6], [[1]])],
+                [([1, 1, 1, 1, 1], [2, 2, 2, 2, 2], [[1], [2,3], None, [0], None]), ([3, 3, 3], [5, 6], [None, None])])
     for i in xrange(5):  # Train the fake model for 5 steps.
       bucket_id = random.choice([0, 1])
       encoder_inputs, decoder_inputs, alignment_inputs, target_weights = model.get_batch(
           data_set, bucket_id)
-      model.step(sess, encoder_inputs, decoder_inputs, alignment_inputs, target_weights,
+      a,b,c = model.step(sess, encoder_inputs, decoder_inputs, alignment_inputs, target_weights,
                  bucket_id, False)
     print("Done test.")
 

@@ -1152,8 +1152,10 @@ class AMRGraph(object):
                 try:
                     curr_edge_index = curr_node.v_edges[curr_index]
                 except:
-                    print s_rep
-                    sys.exit(1)
+                    print 'get concept/relation wrong'
+                    print s_rep, curr_node.node_str(), curr_node.v_edges
+                    print self
+                    sys.exit(0)
                 if i + 1 != len(path) and path[i+1] == 'r': #It's a relation
                     return ('r', curr_edge_index)
                 curr_edge = self.edges[curr_edge_index]

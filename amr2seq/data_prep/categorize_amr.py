@@ -365,7 +365,7 @@ def categorizeParallelSequences(amr, tok_seq, all_alignments, pred_freq_thre=50,
             nodeindex_to_tokindex[node_index] = indexed_aligned_label
             label_to_index[aligned_label] += 1
 
-            #tok_seq2cate_tok_seq_index_map[(tok_index, end_index)] = len(cate_tok_seq)
+            tok_seq2cate_tok_seq_index_map[(tok_index, end_index)] = len(cate_tok_seq)
             cate_tok_seq.append(indexed_aligned_label)
 
             #align_str = '%d-%d:%s:%d:%s:%s' % (tok_index, end_index, ' '.join(tok_seq[tok_index:end_index]), node_index, amr.nodes[node_index].node_str(), indexed_aligned_label)

@@ -319,7 +319,7 @@ class AMR_seq:
                     tok = tok[4:]
                 elif 'RET' in tok or isSpecial(tok):  #Reentrancy, currently not supported
                     prev_elabel = new_seq[-1]
-                    assert prev_elabel[-1] == '(', prev_elabel
+                    #assert prev_elabel[-1] == '(', prev_elabel
                     prev_elabel = prev_elabel[:-1]
                     if i +1 < len(seq):
                         next_elabel = seq[i+1]
