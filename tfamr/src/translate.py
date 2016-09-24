@@ -393,7 +393,7 @@ def self_test():
     ipdb.set_trace()
     # Create model with vocabularies of 10, 2 small buckets, 2 layers of 32.
     model = seq2seq_model.Seq2SeqModel(10, 10, [(3, 3), (6, 6)], 32, 1,
-                                       5.0, 32, 0.3, 0.99, num_samples=8)
+                                       5.0, 64, 0.3, 0.99, num_samples=8)
     sess.run(tf.initialize_all_variables())
 
     # Fake data set for both the (3, 3) and (6, 6) bucket.

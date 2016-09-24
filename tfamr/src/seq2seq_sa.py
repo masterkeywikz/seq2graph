@@ -558,7 +558,10 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, cell,
         with variable_scope.variable_scope("loop_function", reuse=True):
           inp = loop_function(prev, i)
       # Merge input and previous attentions into one vector of the right size.
-      x = rnn_cell.linear([inp] + attns, cell[0].input_size, True)
+      input_size = inp.get_shape().with_rank(2)[1]
+      if input_size.value is None:
+        raise ValueError("Could not infer input size from input: %s" % inp.name)
+      x = rnn_cell.linear([inp] + attns, input_size, True)
       # Run the RNN.
       
       cell_output, state = decoder_cell(x, state)
@@ -908,7 +911,7 @@ def sequence_loss_by_example(logits, targets, soft_aligns, hard_aligns, weights,
       total_size += 1e-12  # Just to avoid division by 0 for all-0 weights.
       log_perps /= total_size
       attn_crossents /= total_size
-  return log_perps + loss_lambda * attn_crossents
+  return log_perps# + loss_lambda * attn_crossents
 
 
 def sequence_loss(logits, targets, soft_aligns, hard_aligns, weights,
