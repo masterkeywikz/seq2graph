@@ -1,0 +1,6 @@
+#!/bin/bash
+#SBATCH --time=120:00:00 --output=out.txt --error=err.txt
+#SBATCH --mem=30GB
+
+#python src/translate.py --data_dir data --train_dir models
+python src/translate.py --data_dir date_data --train_dir date_models_second --amrseq_version 2.0
