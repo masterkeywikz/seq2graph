@@ -294,6 +294,9 @@ class Seq2SeqModel(object):
         if align:
           prob = 1.0 / float(len(align))
           dense_align[align] = prob
+        else:
+          prob = 1.0 / float(len(encoder_input))
+          dense_align[:len(encoder_input)] = prob
 
         dense_alignment_input.append(dense_align[::-1])
       alignment_inputs.append(dense_alignment_input + [PAD_ALIGN] * alignment_pad_size)

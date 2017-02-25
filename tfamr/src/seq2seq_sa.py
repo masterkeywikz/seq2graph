@@ -862,7 +862,7 @@ def one2many_rnn_seq2seq(encoder_inputs, decoder_inputs_dict, cell,
 
 def sequence_loss_by_example(logits, targets, soft_aligns, hard_aligns, weights,
                              average_across_timesteps=True,
-                             softmax_loss_function=None, name=None, loss_lambda=1.0):
+                             softmax_loss_function=None, name=None, loss_lambda=0.3):
   """Weighted cross-entropy loss for a sequence of logits (per example).
 
   Args:

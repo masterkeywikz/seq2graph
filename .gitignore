@@ -66,3 +66,7 @@ target/
 tfamr/data/
 tfamr/models/
 log*
+dev/
+train/
+test/
+run_dir*/
